@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node server.js",
     "vercel-build": "echo 'No static build; Express runs as serverless function'",
-    "compress-uploads": "node scripts/compress-uploads.js"
+    "compress-uploads": "node scripts/compress-uploads.js uploads",
+    "compress-public": "node scripts/compress-uploads.js public"
   },
   "devDependencies": {
     "sharp": "^0.33.5"

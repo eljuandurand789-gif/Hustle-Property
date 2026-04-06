@@ -1,12 +1,13 @@
 /**
- * Resize and re-encode images in uploads/ (run locally before deploy).
+ * Resize and re-encode images (run locally before deploy).
+ * Default: uploads/. Pass folder names relative to repo root, e.g. `node scripts/compress-uploads.js public`.
  * Max dimension 1600px, JPEG/WebP ~78 quality, PNG max compression.
  */
 const fs = require("fs");
 const path = require("path");
 const sharp = require("sharp");
 
-const uploadsDir = path.join(__dirname, "..", "uploads");
+const repoRoot = path.join(__dirname, "..");
 const MAX_SIDE = 1600;
 const JPEG_Q = 78;
 const WEBP_Q = 78;
@@ -45,14 +46,15 @@ async function processFile(filePath) {
   }
 }
 
-async function main() {
-  if (!fs.existsSync(uploadsDir)) {
-    console.error("uploads/ not found");
-    process.exit(1);
+async function processDir(relDir) {
+  const dir = path.join(repoRoot, relDir);
+  if (!fs.existsSync(dir)) {
+    console.error(`Skip missing: ${relDir}`);
+    return;
   }
-  const names = fs.readdirSync(uploadsDir);
+  const names = fs.readdirSync(dir);
   for (const name of names) {
-    const fp = path.join(uploadsDir, name);
+    const fp = path.join(dir, name);
     if (!fs.statSync(fp).isFile()) continue;
     try {
       await processFile(fp);
@@ -60,11 +62,25 @@ async function main() {
       console.error(name, e.message);
     }
   }
-  const afterTotal = fs
-    .readdirSync(uploadsDir)
-    .filter((n) => fs.statSync(path.join(uploadsDir, n)).isFile())
-    .reduce((s, n) => s + fs.statSync(path.join(uploadsDir, n)).size, 0);
-  console.log(`Total uploads size: ${(afterTotal / 1024 / 1024).toFixed(2)} MB`);
+  const bytes = fs
+    .readdirSync(dir)
+    .filter((n) => {
+      try {
+        return fs.statSync(path.join(dir, n)).isFile();
+      } catch {
+        return false;
+      }
+    })
+    .reduce((s, n) => s + fs.statSync(path.join(dir, n)).size, 0);
+  console.log(`Total ${relDir}/ size: ${(bytes / 1024 / 1024).toFixed(2)} MB`);
+}
+
+async function main() {
+  const dirs =
+    process.argv.length > 2 ? process.argv.slice(2) : ["uploads"];
+  for (const d of dirs) {
+    await processDir(d);
+  }
 }
 
 main();
