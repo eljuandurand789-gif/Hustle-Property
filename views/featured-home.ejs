@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= pageTitle %> | Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin">
+
+  <%- include('partials/admin-header', { adminHeroTagline: pageTitle, adminNavActive: 'featured' }) %>
+
+  <main class="content-wrap">
+    <section class="form-card featured-home-card">
+      <h2>Featured Listings — homepage feature slots</h2>
+      <p class="featured-home-lead">
+        Choose up to <strong>two</strong> <strong>To Let</strong> or <strong>For Sale</strong> listings for the homepage <strong>Featured Listings</strong> section. Each slot can use <strong>Classic</strong> (full card with rotating photos) or <strong>API Feature</strong> (clean bordered layout). Leave a slot empty for a placeholder.
+      </p>
+
+      <% if (success) { %>
+        <div class="admin-flash admin-flash--success" role="status">Featured listings updated.</div>
+      <% } %>
+      <% if (error === 'same') { %>
+        <div class="admin-flash" role="alert" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">Choose two different listings (or leave one slot empty).</div>
+      <% } %>
+
+      <form method="POST" action="/admin/featured-home" class="featured-home-form">
+        <div class="featured-home-slots">
+          <div class="form-group">
+            <label for="slot1">Left column — listing</label>
+            <select id="slot1" name="slot1" class="featured-home-select">
+              <option value="">— None —</option>
+              <% listings.forEach((p) => { %>
+                <option value="<%= p.id %>" <%= Number(slot1) === Number(p.id) ? 'selected' : '' %>>
+                  <%= p.name %> (<%= p.area %>)
+                </option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="slot1_style">Left — display style</label>
+            <select id="slot1_style" name="slot1_style" class="featured-home-select">
+              <option value="orbit" <%= typeof slot1_style !== 'undefined' && slot1_style === 'api' ? '' : 'selected' %>>Classic (rotating gallery)</option>
+              <option value="api" <%= typeof slot1_style !== 'undefined' && slot1_style === 'api' ? 'selected' : '' %>>API Feature</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="slot2">Right column — listing</label>
+            <select id="slot2" name="slot2" class="featured-home-select">
+              <option value="">— None —</option>
+              <% listings.forEach((p) => { %>
+                <option value="<%= p.id %>" <%= Number(slot2) === Number(p.id) ? 'selected' : '' %>>
+                  <%= p.name %> (<%= p.area %>)
+                </option>
+              <% }) %>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="slot2_style">Right — display style</label>
+            <select id="slot2_style" name="slot2_style" class="featured-home-select">
+              <option value="orbit" <%= typeof slot2_style !== 'undefined' && slot2_style === 'api' ? '' : 'selected' %>>Classic (rotating gallery)</option>
+              <option value="api" <%= typeof slot2_style !== 'undefined' && slot2_style === 'api' ? 'selected' : '' %>>API Feature</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-submit-row">
+          <button type="submit" class="primary-btn">Save homepage featured</button>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

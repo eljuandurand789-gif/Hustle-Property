@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hustle Property Admin Login</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-login">
+
+  <div class="login-card">
+    <div class="login-brand">
+      <div>
+        <h1>Hustle Property</h1>
+        <p>Admin Login</p>
+      </div>
+    </div>
+
+    <% if (error) { %>
+      <p class="error-text"><%= error %></p>
+    <% } %>
+
+    <form method="POST" action="/admin/login">
+      <label for="admin-username">Username</label>
+      <input
+        id="admin-username"
+        type="text"
+        name="username"
+        required
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+      >
+
+      <label for="admin-password">Password</label>
+      <input id="admin-password" type="password" name="password" required autocomplete="current-password">
+
+      <button type="submit" class="primary-btn">Login</button>
+    </form>
+
+    <div class="quick-login-form">
+      <a href="/admin/login/quick" class="secondary-btn quick-login-btn">Quick login</a>
+    </div>
+
+    <p class="login-back-home">
+      <a href="/" class="login-back-home__link">← Back to homepage</a>
+    </p>
+  </div>
+
+</body>
+</html>

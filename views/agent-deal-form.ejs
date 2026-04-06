@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= pageTitle %> — Agent Zone</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin page-bg--agent-deal">
+
+  <%- include('partials/admin-header', { adminHeroTagline: pageTitle, adminNavActive: 'agentZone' }) %>
+
+  <main class="content-wrap content-wrap--agent-deal">
+    <section class="form-card property-form-large agent-deal-form-card">
+      <h2 class="agent-deal-form__title"><%= pageTitle %></h2>
+      <p class="deal-form-hint agent-deal-form__hint">
+        Targets use <strong>invoice total</strong> and the <strong>lease commencement</strong> date (or lease start if commencement is blank) to place the deal in the right month and year. <strong>Initial rental</strong> is for your notes. Set <strong>lease commencement</strong> + <strong>term</strong> so <a href="/admin/notifications">notifications</a> can track lease end.
+      </p>
+
+      <% if (typeof dealPrefillList !== 'undefined' && dealPrefillList && dealPrefillList.length) { %>
+      <div class="form-group full-width deal-prefill-row">
+        <label for="deal-prefill-select">Prefill from your listing (optional)</label>
+        <select id="deal-prefill-select" class="deal-prefill-select">
+          <option value="">— Select a listing to autofill —</option>
+          <% dealPrefillList.forEach((prop) => { %>
+            <option value="<%= prop.id %>"><%= prop.name %> — <%= prop.area %></option>
+          <% }) %>
+        </select>
+        <span class="field-hint">Fills deal name, address, and rental hint from the listing.</span>
+      </div>
+      <% } %>
+
+      <form action="<%= formAction %>" method="POST" class="property-form-grid agent-deal-form-grid">
+        <% 
+          var formBen = '';
+          var formComm = '';
+          if (deal) {
+            formBen = (deal.beneficial_occupation_date && String(deal.beneficial_occupation_date).trim().slice(0, 10)) || (deal.deal_date && String(deal.deal_date).trim().slice(0, 10)) || '';
+            formComm = (deal.lease_commencement_date && String(deal.lease_commencement_date).trim().slice(0, 10)) || (deal.lease_start_date && String(deal.lease_start_date).trim().slice(0, 10)) || '';
+          }
+        %>
+
+        <div class="form-group agent-deal-form__span2">
+          <label>Agent</label>
+          <select name="agent_id" required>
+            <% agents.forEach(a => { %>
+              <option value="<%= a.id %>" <%= (deal && deal.agent_id === a.id) || (!deal && selectedAgentId === a.id) ? 'selected' : '' %>>
+                <%= a.name %>
+              </option>
+            <% }) %>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Deal name (optional)</label>
+          <input type="text" name="property_name" value="<%= deal ? deal.property_name : '' %>" placeholder="e.g. Warehouse Unit A">
+        </div>
+
+        <div class="form-group">
+          <label>Property address</label>
+          <input type="text" name="property_address" required value="<%= deal ? deal.property_address : '' %>" placeholder="Full address">
+        </div>
+
+        <div class="form-group full-width agent-deal-form__section-label">
+          <span class="agent-deal-form__section-label-text">Key dates</span>
+          <span class="agent-deal-form__section-label-sub">Beneficial occupation (optional record) &amp; lease commencement — targets use commencement; lease end is calculated below</span>
+        </div>
+
+        <div class="form-group">
+          <label for="beneficial_occupation_date">Beneficial occupation</label>
+          <input type="date" id="beneficial_occupation_date" name="beneficial_occupation_date" value="<%= formBen %>">
+        </div>
+
+        <div class="form-group">
+          <label for="lease_commencement_date">Lease commencement</label>
+          <input type="date" id="lease_commencement_date" name="lease_commencement_date" value="<%= formComm %>">
+        </div>
+
+        <p class="field-hint full-width agent-deal-form__hint-inline">If commencement is empty, setting beneficial date copies it here.</p>
+
+        <div class="form-group">
+          <label>Term — years</label>
+          <input type="number" name="lease_years" min="0" max="50" value="<%= deal && deal._lease_years !== undefined ? deal._lease_years : '' %>" placeholder="0">
+        </div>
+
+        <div class="form-group">
+          <label>Term — months</label>
+          <input type="number" name="lease_months" min="0" max="11" value="<%= deal && deal._lease_months !== undefined ? deal._lease_months : '' %>" placeholder="0">
+        </div>
+
+        <div class="form-group">
+          <label>Extra lease notes</label>
+          <input type="text" name="lease_period" value="<%= deal ? deal.lease_period : '' %>" placeholder="Options, reviews…">
+        </div>
+
+        <div class="form-group">
+          <label>Link</label>
+          <input type="url" name="link_url" value="<%= deal ? deal.link_url : '' %>" placeholder="https://…">
+        </div>
+
+        <div class="form-group full-width agent-deal-form__section-label agent-deal-form__section-label--accent">
+          <span class="agent-deal-form__section-label-text">Money &amp; commission</span>
+        </div>
+
+        <div class="form-group full-width agent-deal-form__key-row">
+          <div class="agent-deal-field agent-deal-field--rental">
+            <label for="actual-rental-input">Initial monthly rental</label>
+            <input id="actual-rental-input" type="text" name="actual_rental" value="<%= deal ? deal.actual_rental : '' %>" placeholder="e.g. R45,000 / month" autocomplete="off">
+            <span class="agent-deal-field__hint">Agreed rent (reference only)</span>
+          </div>
+          <div class="agent-deal-field agent-deal-field--invoice">
+            <label for="invoice-total-input">Total invoice value (R)</label>
+            <input id="invoice-total-input" type="number" name="invoice_total_input" step="0.01" min="0" value="<%= deal && deal.invoice_total_input != null && deal.invoice_total_input !== '' ? deal.invoice_total_input : '' %>" placeholder="0.00" inputmode="decimal">
+            <span class="agent-deal-field__hint">Full commission on the invoice — drives <strong>targets</strong></span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Your share %</label>
+          <input type="number" name="agent_share_percent" step="0.1" min="0" max="100" value="<%= deal ? (deal.agent_share_percent != null ? deal.agent_share_percent : 50) : 50 %>">
+        </div>
+
+        <div class="form-group">
+          <label class="agent-deal-form__notes-label">Private notes</label>
+          <textarea name="notes" rows="2" placeholder="Internal only"><%= deal ? deal.notes : '' %></textarea>
+        </div>
+
+        <div class="form-group full-width deal-expected-section agent-deal-form__expected">
+          <label class="deal-expected-checkbox">
+            <input type="checkbox" name="is_expected" value="1" <%= deal && Number(deal.is_expected) === 1 ? "checked" : "" %>>
+            <span>Expected deal (not yet confirmed) — still shown in pipeline colour on the dashboard</span>
+          </label>
+        </div>
+
+        <div class="form-group full-width deal-expected-section agent-deal-form__expected">
+          <label class="deal-expected-checkbox">
+            <input type="checkbox" name="show_on_done_deals" value="1" <%= deal && Number(deal.show_on_done_deals) === 1 ? "checked" : "" %>>
+            <span>Optional: mark for <strong>Done deals</strong> highlights (all confirmed deals already count toward the public track record stats)</span>
+          </label>
+        </div>
+
+        <div class="full-width form-submit-row agent-deal-form__submit">
+          <button type="submit" class="primary-btn large-save-btn">Save deal</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      var benEl = document.getElementById("beneficial_occupation_date");
+      var commEl = document.getElementById("lease_commencement_date");
+      if (benEl && commEl) {
+        benEl.addEventListener("change", function () {
+          if (!commEl.value && benEl.value) commEl.value = benEl.value;
+        });
+      }
+    })();
+  </script>
+  <script>
+    (function () {
+      var prefill = document.getElementById("deal-prefill-select");
+      if (prefill) {
+        prefill.addEventListener("change", function () {
+          var id = prefill.value;
+          if (!id) return;
+          fetch("/admin/api/property/" + id + "/prefill", { credentials: "same-origin" })
+            .then(function (r) {
+              if (!r.ok) throw new Error("prefill");
+              return r.json();
+            })
+            .then(function (p) {
+              var nameEl = document.querySelector('[name="property_name"]');
+              var addrEl = document.querySelector('[name="property_address"]');
+              var rentEl = document.querySelector('[name="actual_rental"]');
+              var linkEl = document.querySelector('[name="link_url"]');
+              if (nameEl) nameEl.value = p.name || "";
+              if (addrEl) addrEl.value = p.address || "";
+              if (rentEl && p.asking_rental_input != null) rentEl.value = p.asking_rental_input;
+              if (linkEl && id) {
+                linkEl.value =
+                  window.location.protocol +
+                  "//" +
+                  window.location.host +
+                  "/property/" +
+                  id;
+              }
+            })
+            .catch(function () {});
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

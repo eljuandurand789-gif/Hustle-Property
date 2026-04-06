@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capture lead — Hustle Property Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin">
+
+  <%- include('partials/admin-header', { adminHeroTagline: 'Capture lead', adminNavActive: 'dashboard' }) %>
+
+  <main class="content-wrap">
+    <% if (saved) { %>
+      <div class="admin-flash admin-flash--success" role="status">Lead saved — it appears under <a href="/admin/notifications">Notifications</a> with your other enquiries.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="admin-flash" role="alert" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">Enter a name and phone number.</div>
+    <% } %>
+
+    <section class="form-card admin-capture-lead-card">
+      <p class="admin-capture-lead-back"><a href="/admin">&larr; Back to listings</a></p>
+      <h1 class="admin-capture-lead-heading">Capture lead</h1>
+      <p class="admin-capture-lead-intro">Quick entry for a call-in or walk-in. Same fields as the public contact form; name and phone are required.</p>
+
+      <form method="POST" action="/admin/capture-lead" class="property-enquiry-form admin-capture-lead-form">
+        <div class="form-group">
+          <label for="cl-name">Name</label>
+          <input id="cl-name" name="name" type="text" required autocomplete="name" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label for="cl-phone">Phone</label>
+          <input id="cl-phone" name="phone" type="tel" required autocomplete="tel" placeholder="Phone number">
+        </div>
+        <div class="form-group">
+          <label for="cl-email">Email (optional)</label>
+          <input id="cl-email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label for="cl-message">Notes (optional)</label>
+          <textarea id="cl-message" name="message" rows="4" placeholder="Requirements, viewing request, source…"></textarea>
+        </div>
+        <button type="submit" class="primary-btn">Save lead</button>
+      </form>
+    </section>
+  </main>
+
+</body>
+</html>

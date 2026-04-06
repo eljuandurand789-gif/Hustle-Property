@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lease notifications — Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin">
+
+  <%- include('partials/admin-header', { adminHeroTagline: 'Notifications — lease reminders', adminNavActive: 'notifications' }) %>
+
+  <main class="content-wrap notifications-main">
+    <section class="form-card notifications-intro">
+      <h2>How this works</h2>
+      <p>
+        Set a <strong>lease end date</strong> on each deal (or compute it from start + term). This page lists
+        <strong>expires today</strong>, everything ending in the <strong>next 30 days</strong> (including deals you added late — e.g. ending next week),
+        and <strong>exactly 30 days before</strong> end as your &ldquo;one month&rdquo; heads-up. Rows with more than 30 days left appear under <em>Later</em> for planning.
+      </p>
+    </section>
+
+    <% if (enquiries && enquiries.length) { %>
+      <section class="notification-block notification-block--enquiries">
+        <h3 class="notification-heading">Property &amp; contact enquiries</h3>
+        <p class="notifications-enquiries-intro">Newest first. Includes listing enquiries from the website and messages from the <a href="/contact">Contact</a> page.</p>
+        <ul class="notification-list notification-list--enquiries">
+          <% enquiries.forEach((e) => { %>
+            <li class="enquiry-row">
+              <div class="enquiry-row__main">
+                <strong><%= e.enquirer_name %></strong>
+                <span class="notif-meta"><%= e.phone %><% if (e.email) { %> · <%= e.email %><% } %></span>
+                <% if (e.message) { %>
+                  <p class="enquiry-msg"><%= e.message %></p>
+                <% } %>
+                <span class="enquiry-unit">
+                  <% if (e.property_id) { %>
+                    <a href="/property/<%= e.property_id %>"><%= e.property_label || "Listing" %></a>
+                    <% if (e.property_address) { %> · <%= e.property_address %><% } %>
+                  <% } else { %>
+                    <%= e.property_label || "General contact" %>
+                  <% } %>
+                </span>
+                <span class="enquiry-date"><%= e.created_at %></span>
+              </div>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+    <% } %>
+
+    <% if (expiresToday.length) { %>
+      <section class="notification-block notification-block--urgent">
+        <h3 class="notification-heading">Expires today</h3>
+        <ul class="notification-list">
+          <% expiresToday.forEach(d => { %>
+            <li>
+              <strong><%= d.property_name || d.property_address %></strong>
+              <span class="notif-meta"><%= d.agent_name %> · ends <%= d.lease_end_date %></span>
+              <a href="/admin/agent-zone/deals/<%= d.id %>/edit" class="view-button small-action">Open deal</a>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+    <% } %>
+
+    <% if (exactly30.length) { %>
+      <section class="notification-block notification-block--month">
+        <h3 class="notification-heading">One month out (30 days before end)</h3>
+        <ul class="notification-list">
+          <% exactly30.forEach(d => { %>
+            <li>
+              <strong><%= d.property_name || d.property_address %></strong>
+              <span class="notif-badge">30 days</span>
+              <span class="notif-meta">Ends <%= d.lease_end_date %> · <%= d.agent_name %></span>
+              <a href="/admin/agent-zone/deals/<%= d.id %>/edit" class="view-button small-action">Open deal</a>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+    <% } %>
+
+    <% if (next30.length) { %>
+      <section class="notification-block notification-block--soon">
+        <h3 class="notification-heading">Ending within 30 days (next week, two weeks, etc.)</h3>
+        <ul class="notification-list">
+          <% next30.forEach(d => { %>
+            <li>
+              <strong><%= d.property_name || d.property_address %></strong>
+              <span class="notif-badge notif-badge--days"><%= d.daysLeft %> days</span>
+              <span class="notif-meta">Ends <%= d.lease_end_date %> · <%= d.agent_name %></span>
+              <a href="/admin/agent-zone/deals/<%= d.id %>/edit" class="view-button small-action">Open deal</a>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+    <% } %>
+
+    <% if (!expiresToday.length && !next30.length && !exactly30.length && !later.length && !overdue.length) { %>
+      <section class="form-card empty-state">
+        <p>No deals with a lease end date yet. <a href="/admin/agent-zone">Add or edit deals</a> and set lease start/term or lease end.</p>
+      </section>
+    <% } else if (!expiresToday.length && !next30.length && !exactly30.length) { %>
+      <p class="notifications-quiet">No alerts in the next 30 days — see <em>Later</em> or <em>Past end date</em> below.</p>
+    <% } %>
+
+    <% if (later.length) { %>
+      <section class="notification-block notification-block--later">
+        <h3 class="notification-heading">Later (31–180 days)</h3>
+        <ul class="notification-list notification-list--compact">
+          <% later.forEach(d => { %>
+            <li>
+              <strong><%= d.property_name || d.property_address %></strong>
+              <span class="notif-meta">in <%= d.daysLeft %> days · <%= d.lease_end_date %></span>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+    <% } %>
+
+    <% if (overdue.length) { %>
+      <section class="notification-block notification-block--overdue">
+        <h3 class="notification-heading">Past end date (review / renewals)</h3>
+        <ul class="notification-list">
+          <% overdue.forEach(d => { %>
+            <li>
+              <strong><%= d.property_name || d.property_address %></strong>
+              <span class="notif-meta">Ended <%= d.lease_end_date %> (<%= Math.abs(d.daysLeft) %> days ago) · <%= d.agent_name %></span>
+              <a href="/admin/agent-zone/deals/<%= d.id %>/edit" class="view-button small-action">Open deal</a>
+            </li>
+          <% }) %>
+        </ul>
+      </section>
+    <% } %>
+  </main>
+
+</body>
+</html>

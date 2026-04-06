@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= pageTitle %></title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin">
+
+  <%- include('partials/admin-header', { adminHeroTagline: pageTitle, adminNavActive: 'dashboard' }) %>
+
+  <main class="content-wrap">
+    <section class="form-card property-form-large">
+
+      <p class="property-form-back-nav">
+        <a href="/admin" class="property-form-back-nav__link">← Back to dashboard</a>
+      </p>
+
+      <h2><%= pageTitle %></h2>
+
+      <form
+        action="<%= formAction %>"
+        method="POST"
+        enctype="multipart/form-data"
+        class="property-form-grid property-form-grid--compact"
+      >
+
+        <div class="form-group full-width">
+          <label>Property Name</label>
+          <input
+            type="text"
+            name="name"
+            required
+            value="<%= property ? property.name : '' %>"
+          >
+        </div>
+
+        <div class="form-group full-width building-unit-section">
+          <label>Building / industrial park</label>
+          <select name="building_id">
+            <option value="">— Standalone (not part of a park) —</option>
+            <% (buildings || []).forEach(b => { %>
+              <option value="<%= b.id %>" <%= property && Number(property.building_id) === Number(b.id) ? 'selected' : '' %>>
+                <%= b.name %>
+              </option>
+            <% }) %>
+          </select>
+          <span class="field-hint">
+            <a href="/admin/buildings" target="_blank" rel="noopener">Manage buildings &amp; parks</a> to add shared photos and copy.
+          </span>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Assigned broker</label>
+          <select name="broker_id">
+            <option value="">— None —</option>
+            <% (listingBrokers || []).forEach((br) => { %>
+              <option
+                value="<%= br.id %>"
+                <%= property && Number(property.broker_id) === Number(br.id) ? 'selected' : '' %>
+              >
+                <%= br.name %>
+              </option>
+            <% }) %>
+          </select>
+          <span class="field-hint">Shown on the public listing when set.</span>
+        </div>
+
+        <div class="form-group full-width">
+          <label class="checkbox-label-row">
+            <input
+              type="checkbox"
+              name="use_unit_details"
+              value="1"
+              <%= !property || property.use_unit_details == null || Number(property.use_unit_details) !== 0 ? 'checked' : '' %>
+            >
+            Use this unit&rsquo;s own description &amp; images on the website (not the building / park defaults)
+          </label>
+          <span class="field-hint">Uncheck to reuse the park&rsquo;s hero images and description on listings and cards (unit price, size, and address still show).</span>
+        </div>
+
+        <div class="form-group">
+          <label>Area</label>
+          <select name="area" required>
+            <option value="">Choose Area</option>
+            <option value="Maitland" <%= property && property.area === 'Maitland' ? 'selected' : '' %>>
+              Maitland
+            </option>
+            <option value="Paarden Eiland" <%= property && property.area === 'Paarden Eiland' ? 'selected' : '' %>>
+              Paarden Eiland
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Status</label>
+          <% const statusVal = property ? (property.statusSelect || String(property.status || '').trim().toLowerCase().replace(/\s+/g, '-')) : ''; %>
+          <select name="status" required>
+            <option value="">Choose Status</option>
+            <option value="to-let" <%= statusVal === 'to-let' ? 'selected' : '' %>>
+              To Let
+            </option>
+            <option value="for-sale" <%= statusVal === 'for-sale' ? 'selected' : '' %>>
+              For Sale
+            </option>
+            <option value="let" <%= statusVal === 'let' ? 'selected' : '' %>>
+              Let
+            </option>
+            <option value="sold" <%= statusVal === 'sold' ? 'selected' : '' %>>
+              Sold
+            </option>
+            <% if (statusVal && !['to-let', 'for-sale', 'let', 'sold'].includes(statusVal)) { %>
+              <option value="<%= statusVal %>" selected><%= property.status %> (current)</option>
+            <% } %>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Type</label>
+          <% const typeVal = property && String(property.property_type || '').toLowerCase() === 'office' ? 'office' : 'industrial'; %>
+          <select name="property_type" required>
+            <option value="industrial" <%= typeVal === 'industrial' ? 'selected' : '' %>>Industrial</option>
+            <option value="office" <%= typeVal === 'office' ? 'selected' : '' %>>Office</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Prominence</label>
+          <select name="priority_group" required>
+            <option value="high" <%= property && property.priority_group === 'high' ? 'selected' : '' %>>
+              High Priority
+            </option>
+            <option value="medium" <%= !property || property.priority_group === 'medium' ? 'selected' : '' %>>
+              Medium Priority
+            </option>
+            <option value="low" <%= property && property.priority_group === 'low' ? 'selected' : '' %>>
+              Low Priority
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Size (m²)</label>
+          <div class="input-affix input-affix--suffix">
+            <input
+              type="text"
+              name="size"
+              inputmode="decimal"
+              autocomplete="off"
+              placeholder="450"
+              value="<%= property ? (property.sizeInput || '') : '' %>"
+              class="input-affix__field"
+            >
+            <span class="input-affix__fix" aria-hidden="true">m²</span>
+          </div>
+          <span class="field-hint">Enter the number (commas optional); m² is added when you save.</span>
+        </div>
+
+        <div class="form-group">
+          <label>Price</label>
+          <div class="input-affix input-affix--prefix">
+            <span class="input-affix__fix" aria-hidden="true">R</span>
+            <input
+              type="text"
+              name="price"
+              autocomplete="off"
+              placeholder="45,000 per month"
+              value="<%= property ? (property.priceInput || '') : '' %>"
+              class="input-affix__field"
+            >
+          </div>
+          <span class="field-hint">Large amounts get comma separators (e.g. 81,810). An &ldquo;R &rdquo; prefix is added when you save.</span>
+        </div>
+
+        <div class="form-group">
+          <label>Availability (date)</label>
+          <input
+            type="date"
+            name="availability"
+            value="<%= property && property.availabilityDate ? property.availabilityDate : '' %>"
+          >
+          <span class="field-hint">Pick a date from the calendar. Older text-only values won&rsquo;t show here—choose a date and save to update.</span>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Address</label>
+          <input
+            type="text"
+            name="address"
+            placeholder="e.g. 67 Paarden Eiland Road"
+            value="<%= property ? property.address : '' %>"
+          >
+          <span class="field-hint">Used for the public map pin. Include street number and road name; pick the correct <strong>Area</strong> above. After Save, the server looks up coordinates (Google Maps if configured, otherwise OpenStreetMap).</span>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Description</label>
+          <textarea
+            name="description"
+            rows="5"
+            placeholder="Write a full property description..."
+          ><%= property ? property.description : '' %></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Power supply</label>
+          <select name="power_phase">
+            <option value="" <%= !property || !property.power_phase ? 'selected' : '' %>>— Not specified —</option>
+            <option value="single-phase" <%= property && property.power_phase === 'single-phase' ? 'selected' : '' %>>Single phase</option>
+            <option value="3-phase" <%= property && property.power_phase === '3-phase' ? 'selected' : '' %>>3-phase</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Amps (optional)</label>
+          <input
+            type="text"
+            name="power_amps"
+            placeholder="e.g. 60A or 80 A"
+            value="<%= property && property.power_amps ? property.power_amps : '' %>"
+          >
+        </div>
+
+        <div class="form-group">
+          <label>Height to eave — apex (optional)</label>
+          <input
+            type="text"
+            name="height_eave_apex"
+            placeholder="e.g. 8.5 m"
+            value="<%= property && property.height_eave_apex ? property.height_eave_apex : '' %>"
+          >
+        </div>
+
+        <div class="form-group">
+          <label>Height to eave — roller shutter (optional)</label>
+          <input
+            type="text"
+            name="height_eave_roller_shutter"
+            placeholder="e.g. 4.2 m"
+            value="<%= property && property.height_eave_roller_shutter ? property.height_eave_roller_shutter : '' %>"
+          >
+        </div>
+
+        <div class="form-group">
+          <label>Parking bays (optional)</label>
+          <input
+            type="text"
+            name="parking_bays"
+            placeholder="e.g. 4 or 4 covered"
+            value="<%= property && property.parking_bays ? property.parking_bays : '' %>"
+          >
+        </div>
+
+        <div class="form-group full-width">
+          <label>Yard space (optional)</label>
+          <textarea
+            name="yard_space"
+            rows="4"
+            placeholder="e.g. 200 m² exclusive paved yard, shared truck court, depth behind roller door…"
+          ><%= property && property.yard_space ? property.yard_space : '' %></textarea>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Private Notes (Admin Only)</label>
+          <textarea
+            name="notes"
+            rows="4"
+            placeholder="Only visible in admin"
+          ><%= property ? property.notes : '' %></textarea>
+        </div>
+
+        <div class="form-group full-width property-images-unified">
+          <label>Property images</label>
+          <p class="cover-drop-hint">
+            Cover is the main listing photo (full width above). Drag any gallery thumbnail onto the cover frame to set it as the cover, or drop a file from your computer. Reorder gallery images by dragging in the grid (saved when you drop).
+          </p>
+
+          <div class="property-images-unified-inner">
+            <div class="property-images-cover-col">
+              <p class="property-images-sublabel">Cover</p>
+              <input type="hidden" name="coverFromImageId" id="cover-from-image-id" value="">
+              <div
+                id="cover-drop-zone"
+                class="cover-drop-zone property-cover-drop-zone <%= property && property.displayImage ? 'has-image' : '' %>"
+              >
+                <input
+                  type="file"
+                  id="cover-file-input"
+                  name="displayImage"
+                  accept="image/*"
+                  class="cover-file-input-hidden"
+                >
+                <div id="cover-drop-placeholder" class="cover-drop-placeholder">
+                  Drop cover image here<br>
+                  <span>or drag from gallery below · or click to browse</span>
+                </div>
+                <img id="cover-preview-main" class="cover-preview-main" alt="Cover preview" style="display:none;">
+              </div>
+              <% if (property && property.displayImage) { %>
+                <p class="cover-existing-note">Replacing the cover updates the main photo on listings.</p>
+              <% } %>
+            </div>
+
+            <div class="property-images-gallery-col">
+              <p class="property-images-sublabel">Gallery &amp; new uploads</p>
+              <input type="file" name="images" accept="image/*" multiple>
+
+              <% if (property && property.images && property.images.length) { %>
+                <p class="image-sort-hint">Drag thumbnails to reorder, or onto the cover frame to set the main photo.</p>
+                <div
+                  id="image-sortable-list"
+                  class="image-order-grid image-order-grid--sortable image-order-grid--dense"
+                  data-property-id="<%= property.id %>"
+                >
+
+                  <% property.images.forEach(image => { %>
+                    <div
+                      class="image-order-card"
+                      data-image-id="<%= image.id %>"
+                      data-filename="<%= image.filename %>"
+                      draggable="true"
+                    >
+
+                      <img
+                        src="/uploads/<%= image.filename %>"
+                        alt="Property Image"
+                        class="image-order-preview"
+                        draggable="false"
+                      >
+
+                      <button type="button" class="secondary-btn set-cover-from-gallery-btn">
+                        Use as cover
+                      </button>
+
+                      <div class="image-order-buttons">
+                        <button
+                          type="button"
+                          class="secondary-btn move-btn image-order-move-btn"
+                          data-image-id="<%= image.id %>"
+                          data-direction="left"
+                          aria-label="Move image left in order"
+                        >
+                          ←
+                        </button>
+                        <button
+                          type="button"
+                          class="secondary-btn move-btn image-order-move-btn"
+                          data-image-id="<%= image.id %>"
+                          data-direction="right"
+                          aria-label="Move image right in order"
+                        >
+                          →
+                        </button>
+                      </div>
+
+                    </div>
+                  <% }) %>
+
+                </div>
+              <% } %>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group full-width property-video-field">
+          <label>Property video (optional)</label>
+          <p class="field-hint">
+            Shown on the public property page. MP4 or WebM works in most browsers; keep files under ~200 MB.
+          </p>
+          <input
+            type="file"
+            name="propertyVideo"
+            accept="video/*,.mp4,.webm,.ogg,.mov"
+          >
+          <% if (property && property.video_filename) { %>
+            <p class="property-video-current">
+              A video is already published. Choose a new file to replace it, or tick below to remove it.
+            </p>
+            <label class="checkbox-label-row">
+              <input type="checkbox" name="remove_video" value="1">
+              Remove video from the website
+            </label>
+          <% } %>
+        </div>
+
+        <div class="full-width form-submit-row">
+          <button type="submit" class="primary-btn large-save-btn">
+            Save Property
+          </button>
+        </div>
+
+      </form>
+
+      <% if (property) { %>
+        <form
+          action="/admin/properties/<%= property.id %>/delete"
+          method="POST"
+          class="property-delete-bar"
+          onsubmit="return confirm('Delete this property? This cannot be undone.');"
+        >
+          <button type="submit" class="secondary-btn danger-btn">Delete property</button>
+        </form>
+      <% } %>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      var form = document.querySelector(".property-form-grid.property-form-grid--compact");
+      if (!form) return;
+      var priceEl = form.querySelector('input[name="price"]');
+      var sizeEl = form.querySelector('input[name="size"]');
+      function fmtMoney(n) {
+        if (!Number.isFinite(n)) return "";
+        var hasCents = Math.abs(n % 1) > 1e-9;
+        return hasCents
+          ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : Math.round(n).toLocaleString("en-US");
+      }
+      function onPriceBlur() {
+        if (!priceEl) return;
+        var v = priceEl.value.trim();
+        if (!v) return;
+        var cleaned = v.replace(/^\s*R\s*/i, "").trim();
+        var m = cleaned.match(/^([\d,]+(?:\.\d+)?)\s*(.*)$/);
+        if (!m) return;
+        var n = parseFloat(m[1].replace(/,/g, ""));
+        if (!Number.isFinite(n)) return;
+        var formatted = fmtMoney(n);
+        priceEl.value = m[2] ? formatted + " " + m[2].trim() : formatted;
+      }
+      function onSizeBlur() {
+        if (!sizeEl) return;
+        var v = sizeEl.value.trim().replace(/,/g, "");
+        if (!v) return;
+        var n = parseFloat(v.replace(/[^\d.]/g, ""));
+        if (!Number.isFinite(n)) return;
+        var out =
+          Math.abs(n - Math.round(n)) < 1e-9
+            ? Math.round(n).toLocaleString("en-US")
+            : n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+        sizeEl.value = out;
+      }
+      if (priceEl) priceEl.addEventListener("blur", onPriceBlur);
+      if (sizeEl) sizeEl.addEventListener("blur", onSizeBlur);
+    })();
+  </script>
+
+  <script>
+    (function () {
+      var zone = document.getElementById("cover-drop-zone");
+      var input = document.getElementById("cover-file-input");
+      var img = document.getElementById("cover-preview-main");
+      var ph = document.getElementById("cover-drop-placeholder");
+      var coverFromInput = document.getElementById("cover-from-image-id");
+      if (!zone || !input || !img || !ph) return;
+
+      var skipReorderOnDragEnd = false;
+      var DT_ID = "application/x-property-image-id";
+      var DT_FILE = "application/x-property-filename";
+
+      function hasGalleryPayload(types) {
+        if (!types || !types.length) return false;
+        var t = Array.prototype.slice.call(types);
+        return t.indexOf(DT_ID) >= 0 || t.indexOf(DT_FILE) >= 0 || t.indexOf("text/plain") >= 0;
+      }
+
+      function clearCoverFromGallery() {
+        if (coverFromInput) coverFromInput.value = "";
+      }
+
+      function applyCoverFromGallery(imageId, filename) {
+        if (!filename || !coverFromInput) return;
+        coverFromInput.value = String(imageId);
+        img.src = "/uploads/" + filename;
+        img.style.display = "block";
+        ph.style.display = "none";
+        zone.classList.add("has-image");
+        input.value = "";
+        skipReorderOnDragEnd = true;
+      }
+
+      function showFile(f) {
+        if (!f || !f.type.match(/^image\//)) return;
+        clearCoverFromGallery();
+        img.src = URL.createObjectURL(f);
+        img.style.display = "block";
+        ph.style.display = "none";
+        zone.classList.add("has-image");
+      }
+
+      <% if (property && property.displayImage) { %>
+      img.src = "/uploads/<%= property.displayImage %>";
+      img.style.display = "block";
+      ph.style.display = "none";
+      zone.classList.add("has-image");
+      <% } %>
+
+      zone.addEventListener("click", function (e) {
+        if (e.target !== input) input.click();
+      });
+      input.addEventListener("change", function () {
+        if (input.files && input.files[0]) {
+          clearCoverFromGallery();
+          showFile(input.files[0]);
+        }
+      });
+
+      ["dragenter", "dragover"].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var types = e.dataTransfer && e.dataTransfer.types;
+          var fromPc = types && Array.prototype.indexOf.call(types, "Files") >= 0;
+          var fromGallery = hasGalleryPayload(types);
+          if (fromGallery) e.dataTransfer.dropEffect = "copy";
+          else if (fromPc) e.dataTransfer.dropEffect = "copy";
+          zone.classList.add("cover-drop-zone--drag");
+          if (fromGallery) zone.classList.add("cover-drop-zone--from-gallery");
+          else zone.classList.remove("cover-drop-zone--from-gallery");
+        });
+      });
+      zone.addEventListener("dragleave", function (e) {
+        e.preventDefault();
+        if (!zone.contains(e.relatedTarget)) {
+          zone.classList.remove("cover-drop-zone--drag");
+          zone.classList.remove("cover-drop-zone--from-gallery");
+        }
+      });
+
+      zone.addEventListener("drop", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        zone.classList.remove("cover-drop-zone--drag");
+        zone.classList.remove("cover-drop-zone--from-gallery");
+
+        var files = e.dataTransfer.files;
+        if (files && files.length) {
+          var f = files[0];
+          if (f.type.match(/^image\//)) {
+            var dt = new DataTransfer();
+            dt.items.add(f);
+            input.files = dt.files;
+            showFile(f);
+          }
+          return;
+        }
+
+        var imageId = e.dataTransfer.getData(DT_ID);
+        var filename = e.dataTransfer.getData(DT_FILE);
+        if (!imageId || !filename) {
+          var plain = e.dataTransfer.getData("text/plain") || "";
+          var m = plain.match(/^property-image:(\d+):(.+)$/);
+          if (m) {
+            imageId = m[1];
+            try {
+              filename = decodeURIComponent(m[2]);
+            } catch (err) {
+              filename = m[2];
+            }
+          }
+        }
+        if (imageId && filename) applyCoverFromGallery(imageId, filename);
+      });
+
+      var list = document.getElementById("image-sortable-list");
+      if (!list) return;
+
+      var pid = list.getAttribute("data-property-id");
+      if (!pid) return;
+
+      function postOrder() {
+        var cards = list.querySelectorAll(".image-order-card");
+        var ids = [].map.call(cards, function (c) {
+          return Number(c.getAttribute("data-image-id"));
+        });
+        fetch("/admin/api/property-images/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ propertyId: Number(pid), imageIds: ids }),
+          credentials: "same-origin"
+        }).then(function (r) {
+          if (!r.ok) alert("Could not save image order.");
+        });
+      }
+
+      var dragEl = null;
+
+      list.querySelectorAll(".image-order-card").forEach(function (card) {
+        card.addEventListener("dragstart", function (e) {
+          skipReorderOnDragEnd = false;
+          dragEl = card;
+          card.classList.add("image-order-card--dragging");
+          var id = card.getAttribute("data-image-id");
+          var filename = card.getAttribute("data-filename") || "";
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData(
+            "text/plain",
+            "property-image:" + id + ":" + encodeURIComponent(filename)
+          );
+          e.dataTransfer.setData(DT_ID, String(id));
+          e.dataTransfer.setData(DT_FILE, filename);
+        });
+        card.addEventListener("dragend", function () {
+          card.classList.remove("image-order-card--dragging");
+          if (!skipReorderOnDragEnd) postOrder();
+          skipReorderOnDragEnd = false;
+          dragEl = null;
+        });
+        card.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (!dragEl || dragEl === card) return;
+          var rect = card.getBoundingClientRect();
+          var before = e.clientY < rect.top + rect.height / 2;
+          if (before) {
+            list.insertBefore(dragEl, card);
+          } else {
+            list.insertBefore(dragEl, card.nextSibling);
+          }
+        });
+        card.addEventListener("drop", function (e) {
+          e.preventDefault();
+        });
+
+        var setBtn = card.querySelector(".set-cover-from-gallery-btn");
+        if (setBtn) {
+          setBtn.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            var id = card.getAttribute("data-image-id");
+            var filename = card.getAttribute("data-filename");
+            applyCoverFromGallery(id, filename);
+          });
+        }
+      });
+    })();
+  </script>
+
+  <script>
+    (function () {
+      document.querySelectorAll(".image-order-move-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var id = btn.getAttribute("data-image-id");
+          var dir = btn.getAttribute("data-direction");
+          if (!id || !dir) return;
+          var f = document.createElement("form");
+          f.method = "POST";
+          f.action = "/admin/images/" + id + "/" + dir;
+          document.body.appendChild(f);
+          f.submit();
+        });
+      });
+    })();
+  </script>
+
+</body>
+</html>

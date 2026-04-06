@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hustle Property Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin">
+
+  <%- include('partials/admin-header', { adminHeroTagline: 'Admin Dashboard', adminNavActive: 'dashboard' }) %>
+
+  <main class="content-wrap">
+    <% if (success === "updated") { %>
+      <div class="admin-flash admin-flash--success" role="status">Unit successfully updated</div>
+    <% } else if (success === "created") { %>
+      <div class="admin-flash admin-flash--success" role="status">Property successfully added</div>
+    <% } else if (success === "deleted") { %>
+      <div class="admin-flash admin-flash--success" role="status">Property removed</div>
+    <% } %>
+
+    <section class="form-card admin-dashboard-card">
+      <div class="admin-header-row">
+        <h2 class="admin-saved-title admin-saved-title--compact">Saved properties</h2>
+        <div class="admin-header-row__actions">
+          <a href="/admin/capture-lead" class="secondary-btn capture-lead-btn">Capture lead</a>
+          <a href="/admin/properties/new" class="primary-btn add-property-btn">
+            + Add Property
+          </a>
+        </div>
+      </div>
+
+      <form method="GET" action="/admin" class="admin-filter-row admin-filter-row--compact">
+        <div class="admin-filter-field">
+          <label class="admin-filter-label" for="adminAreaSelect">Area</label>
+          <select id="adminAreaSelect" name="adminArea" class="admin-area-select admin-area-select--compact">
+            <option value="">All Areas</option>
+            <option value="Maitland" <%= adminArea === 'Maitland' ? 'selected' : '' %>>Maitland</option>
+            <option value="Paarden Eiland" <%= adminArea === 'Paarden Eiland' ? 'selected' : '' %>>Paarden Eiland</option>
+          </select>
+        </div>
+        <button type="submit" class="secondary-btn admin-filter-btn admin-filter-btn--compact">Filter</button>
+      </form>
+    </section>
+
+    <section class="property-grid admin-grid-small">
+      <% properties.forEach(property => { %>
+        <article class="property-card admin-card-small">
+          <% if (property.cardImage || property.displayImage) { %>
+            <div class="admin-card-image-wrap">
+              <img
+                src="/uploads/<%= property.cardImage || property.displayImage %>"
+                alt="<%= property.name %>"
+                class="admin-card-image-small"
+              >
+            </div>
+          <% } else { %>
+            <div class="admin-card-image-wrap admin-card-image-wrap--empty">
+              <div class="admin-no-image-small no-image">No Image</div>
+            </div>
+          <% } %>
+
+          <div class="admin-card-content-small">
+            <div class="status-badge">
+              <%= property.statusLabel %>
+            </div>
+
+            <h3><%= property.name %></h3>
+
+            <p><strong>Area:</strong> <%= property.area %></p>
+            <p><strong>Type:</strong> <%= property.propertyTypeLabel || "Industrial" %></p>
+            <p>
+              <strong>Priority:</strong>
+              <%= property.priority_group === "high"
+                ? "High Priority"
+                : property.priority_group === "medium"
+                ? "Medium Priority"
+                : "Low Priority" %>
+            </p>
+
+            <div class="admin-card-actions">
+              <a
+                href="/admin/properties/<%= property.id %>/edit"
+                class="view-button admin-edit-btn"
+              >
+                Edit
+              </a>
+            </div>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+  </main>
+
+</body>
+</html>

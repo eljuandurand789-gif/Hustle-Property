@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= property.name %> | Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--property-public">
+
+  <header class="property-public-hero property-public-hero--compact">
+    <a href="/" class="property-public-hero__back">← Back to listings</a>
+    <div class="property-public-hero__brand">
+      <div class="property-public-logo-panel">
+        <a href="/" class="property-public-logo-link" aria-label="Hustle Property — home">
+          <img src="/logo.png" alt="Hustle Property" class="property-public-logo" width="200" height="auto" decoding="async">
+        </a>
+      </div>
+      <p class="property-public-hero__subtitle">Property details</p>
+    </div>
+    <a href="/contact" class="property-public-hero__contact">Contact us</a>
+  </header>
+
+  <main class="content-wrap property-public-main">
+    <% if (enquirySent) { %>
+      <div class="admin-flash admin-flash--success property-enquiry-flash" role="status">
+        Thanks — your enquiry was sent. We&rsquo;ll get back to you soon.
+      </div>
+    <% } %>
+
+    <% if (property.building) { %>
+      <section class="building-banner-strip">
+        <p>
+          Part of <strong><%= property.building.name %></strong>
+          &nbsp;·&nbsp;
+          <a href="/building/<%= property.building.id %>#units" class="building-banner-link">View units in <%= property.building.name %></a>
+        </p>
+      </section>
+    <% } %>
+
+    <div class="property-detail-layout">
+      <div class="property-media-col">
+        <% const allImages = property.galleryFilenames && property.galleryFilenames.length ? property.galleryFilenames : []; %>
+
+        <% if (allImages.length > 0) { %>
+          <div class="property-slider-wrap">
+            <button type="button" onclick="changeSlide(-1)" class="slider-arrow left-arrow">‹</button>
+
+            <img
+              id="mainSliderImage"
+              src="/uploads/<%= allImages[0] %>"
+              alt="<%= property.name %>"
+              class="main-property-image"
+            >
+
+            <button type="button" onclick="changeSlide(1)" class="slider-arrow right-arrow">›</button>
+          </div>
+
+          <div class="thumb-row">
+            <% allImages.forEach((img, index) => { %>
+              <img
+                src="/uploads/<%= img %>"
+                alt="<%= property.name %>"
+                class="detail-thumb"
+                onclick="setSlide(<%= index %>)"
+              >
+            <% }) %>
+          </div>
+
+          <div class="listing-lightbox" id="property-photo-lightbox" role="dialog" aria-modal="true" aria-label="Property photos" hidden>
+            <div class="listing-lightbox__backdrop" id="property-photo-lightbox-backdrop"></div>
+            <button type="button" class="listing-lightbox__close" id="property-photo-lightbox-close" aria-label="Close gallery">&times;</button>
+            <button type="button" class="listing-lightbox__nav listing-lightbox__prev" id="property-photo-lightbox-prev" aria-label="Previous photo">&lsaquo;</button>
+            <button type="button" class="listing-lightbox__nav listing-lightbox__next" id="property-photo-lightbox-next" aria-label="Next photo">&rsaquo;</button>
+            <div class="listing-lightbox__stage">
+              <img src="" alt="" class="listing-lightbox__img" id="property-photo-lightbox-img" decoding="async">
+            </div>
+            <p class="listing-lightbox__counter" id="property-photo-lightbox-counter" aria-live="polite"></p>
+          </div>
+
+          <script>
+            const sliderImages = <%- JSON.stringify(allImages.map(img => "/uploads/" + img)) %>;
+            let currentSlide = 0;
+
+            function setSlide(index) {
+              currentSlide = index;
+              document.getElementById("mainSliderImage").src = sliderImages[currentSlide];
+            }
+
+            function changeSlide(direction) {
+              currentSlide += direction;
+              if (currentSlide < 0) currentSlide = sliderImages.length - 1;
+              if (currentSlide >= sliderImages.length) currentSlide = 0;
+              document.getElementById("mainSliderImage").src = sliderImages[currentSlide];
+            }
+
+            (function () {
+              var lb = document.getElementById("property-photo-lightbox");
+              if (!lb || !sliderImages.length) return;
+              var imgEl = document.getElementById("property-photo-lightbox-img");
+              var counter = document.getElementById("property-photo-lightbox-counter");
+              var backdrop = document.getElementById("property-photo-lightbox-backdrop");
+              var closeBtn = document.getElementById("property-photo-lightbox-close");
+              var prevBtn = document.getElementById("property-photo-lightbox-prev");
+              var nextBtn = document.getElementById("property-photo-lightbox-next");
+              var idx = 0;
+
+              function render() {
+                if (!imgEl) return;
+                imgEl.src = sliderImages[idx];
+                imgEl.alt = "Photo " + (idx + 1) + " of " + sliderImages.length;
+                if (counter) counter.textContent = idx + 1 + " / " + sliderImages.length;
+                var multi = sliderImages.length > 1;
+                if (prevBtn) prevBtn.hidden = !multi;
+                if (nextBtn) nextBtn.hidden = !multi;
+              }
+
+              function openLb(start) {
+                idx = Math.max(0, Math.min(start, sliderImages.length - 1));
+                render();
+                lb.hidden = false;
+                document.body.style.overflow = "hidden";
+                if (closeBtn) closeBtn.focus();
+              }
+
+              function closeLb() {
+                lb.hidden = true;
+                document.body.style.overflow = "";
+              }
+
+              function step(delta) {
+                if (sliderImages.length < 2) return;
+                idx = (idx + delta + sliderImages.length) % sliderImages.length;
+                render();
+              }
+
+              var main = document.getElementById("mainSliderImage");
+              if (main) {
+                main.style.cursor = "zoom-in";
+                main.setAttribute("title", "Click to enlarge photos");
+                main.addEventListener("click", function (e) {
+                  e.preventDefault();
+                  openLb(currentSlide);
+                });
+              }
+
+              if (closeBtn) closeBtn.addEventListener("click", closeLb);
+              if (backdrop) backdrop.addEventListener("click", closeLb);
+              if (prevBtn) prevBtn.addEventListener("click", function () { step(-1); });
+              if (nextBtn) nextBtn.addEventListener("click", function () { step(1); });
+
+              document.addEventListener("keydown", function (e) {
+                if (lb.hidden) return;
+                if (e.key === "Escape") closeLb();
+                else if (e.key === "ArrowLeft") step(-1);
+                else if (e.key === "ArrowRight") step(1);
+              });
+            })();
+          </script>
+        <% } else { %>
+          <div class="main-no-image">No Image</div>
+        <% } %>
+
+        <% if (property.video_filename) { %>
+          <div class="property-video-block">
+            <h3 class="property-video-heading">Property video</h3>
+            <video
+              class="property-video"
+              controls
+              playsinline
+              preload="metadata"
+              src="/uploads/<%= property.video_filename %>"
+            >
+              Your browser does not support embedded video.
+            </video>
+          </div>
+        <% } %>
+
+        <div class="property-enquiry-row">
+          <section class="property-enquiry-card property-enquiry-card--prominent" id="enquiry">
+            <div class="property-enquiry-card__head">
+              <h3 class="property-enquiry-heading">Enquire about this unit</h3>
+              <% if (areaGuideSlug && areaGuideLabel) { %>
+                <a href="/area/<%= areaGuideSlug %>" class="secondary-btn property-enquiry-area-guide-btn"><%= areaGuideLabel %></a>
+              <% } %>
+            </div>
+            <p class="property-enquiry-intro">
+              We&rsquo;ll notify the office with the <strong>address</strong> and listing below. Name and phone are required; email and message are optional.
+            </p>
+            <p class="property-enquiry-unit-meta">
+              <strong><%= property.name %></strong><br>
+              <% if (property.address) { %><%= property.address %><% } else { %><em>Address on file</em><% } %>
+            </p>
+            <form method="POST" action="/property/<%= property.id %>/enquiry" class="property-enquiry-form property-enquiry-form--grid">
+              <div class="form-group">
+                <label for="enquiry-name">Your name</label>
+                <input id="enquiry-name" name="name" type="text" required autocomplete="name" placeholder="Full name">
+              </div>
+              <div class="form-group">
+                <label for="enquiry-phone">Phone</label>
+                <input id="enquiry-phone" name="phone" type="tel" required autocomplete="tel" placeholder="Phone number">
+              </div>
+              <div class="form-group form-group--full">
+                <label for="enquiry-email">Email (optional)</label>
+                <input id="enquiry-email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+              </div>
+              <div class="form-group form-group--full">
+                <label for="enquiry-message">Message (optional)</label>
+                <textarea id="enquiry-message" name="message" rows="5" placeholder="Questions or viewing request…"></textarea>
+              </div>
+              <div class="form-group form-group--full form-group--enquiry-actions">
+                <button type="submit" class="primary-btn property-enquiry-submit">Send enquiry</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <% const stRaw = String(property.status || "").toLowerCase(); %>
+      <% const priceLabel = (stRaw === "for-sale" || stRaw === "sold") ? "Asking price" : (stRaw === "to-let" || stRaw === "let") ? "Rental" : "Listing price"; %>
+      <% const showUnit = property.showUnitDetails; %>
+      <% const descText = showUnit ? (property.description || "") : ((property.building && property.building.description) || property.description || ""); %>
+      <% const pp = property.power_phase; const amps = property.power_amps && String(property.power_amps).trim(); %>
+
+      <div class="details-card property-details-card">
+        <header class="property-details-header">
+          <div class="status-badge property-details-status"><%= property.statusLabel %></div>
+          <h2 class="property-details-title"><%= property.name %></h2>
+        </header>
+
+        <div class="property-details-price-hero" aria-labelledby="property-price-label">
+          <p id="property-price-label" class="property-details-price-hero__label"><%= priceLabel %></p>
+          <p class="property-details-price-hero__value"><%= property.price || "—" %></p>
+        </div>
+
+        <div class="property-details-spec-grid">
+          <div class="property-detail-spec">
+            <span class="property-detail-spec__label">Area</span>
+            <span class="property-detail-spec__value"><%= property.area || "—" %></span>
+          </div>
+          <div class="property-detail-spec">
+            <span class="property-detail-spec__label">Type</span>
+            <span class="property-detail-spec__value"><%= property.propertyTypeLabel || "—" %></span>
+          </div>
+          <div class="property-detail-spec">
+            <span class="property-detail-spec__label">Unit size</span>
+            <span class="property-detail-spec__value"><%= property.size || "—" %></span>
+          </div>
+          <% if (property.building && property.building.size_text) { %>
+            <div class="property-detail-spec property-detail-spec--wide">
+              <span class="property-detail-spec__label">Park / building</span>
+              <span class="property-detail-spec__value"><%= property.building.size_text %></span>
+            </div>
+          <% } %>
+          <div class="property-detail-spec property-detail-spec--wide property-detail-spec--address">
+            <span class="property-detail-spec__label">Address</span>
+            <div class="property-detail-spec__address-line">
+              <span class="property-detail-spec__value"><%= property.address || "—" %></span>
+              <% if (property.address) { %>
+                <a
+                  href="https://www.google.com/maps/search/?api=1&query=<%= encodeURIComponent(property.address) %>"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="property-details-maps-btn property-details-maps-btn--inline"
+                >
+                  Open in Google Maps
+                </a>
+              <% } %>
+            </div>
+          </div>
+          <div class="property-detail-spec">
+            <span class="property-detail-spec__label">Availability</span>
+            <span class="property-detail-spec__value"><%= property.availabilityDisplay || "—" %></span>
+          </div>
+          <% if (property.brokerName) { %>
+            <div class="property-detail-spec">
+              <span class="property-detail-spec__label">Broker</span>
+              <span class="property-detail-spec__value"><%= property.brokerName %></span>
+            </div>
+          <% } %>
+          <% if (pp || amps) { %>
+            <div class="property-detail-spec property-detail-spec--wide">
+              <span class="property-detail-spec__label">Power</span>
+              <span class="property-detail-spec__value">
+                <% if (pp === "3-phase") { %>3-phase<% } else if (pp === "single-phase") { %>Single phase<% } %>
+                <% if (pp && amps) { %> · <% } %>
+                <% if (amps) { %><%= property.powerAmpsDisplay %><% } %>
+              </span>
+            </div>
+          <% } %>
+          <% if (property.height_eave_apex && String(property.height_eave_apex).trim()) { %>
+            <div class="property-detail-spec">
+              <span class="property-detail-spec__label">Height to eave (apex)</span>
+              <span class="property-detail-spec__value"><%= property.heightEaveApexDisplay %></span>
+            </div>
+          <% } %>
+          <% if (property.height_eave_roller_shutter && String(property.height_eave_roller_shutter).trim()) { %>
+            <div class="property-detail-spec">
+              <span class="property-detail-spec__label">Height to eave (roller shutter)</span>
+              <span class="property-detail-spec__value"><%= property.heightEaveRollerDisplay %></span>
+            </div>
+          <% } %>
+          <% if (property.parking_bays && String(property.parking_bays).trim()) { %>
+            <div class="property-detail-spec">
+              <span class="property-detail-spec__label">Parking bays</span>
+              <span class="property-detail-spec__value"><%= property.parking_bays %></span>
+            </div>
+          <% } %>
+        </div>
+
+        <% if (property.yard_space && String(property.yard_space).trim()) { %>
+          <section class="property-details-description property-details-yard" aria-labelledby="property-yard-heading">
+            <h3 id="property-yard-heading" class="property-details-description__title">Yard space</h3>
+            <div class="property-details-yard__body">
+              <% String(property.yard_space).trim().split(/\r?\n/).forEach(function (line) { %>
+                <% if (String(line).trim()) { %>
+                  <p class="property-details-yard__para"><%= String(line).trim() %></p>
+                <% } %>
+              <% }); %>
+            </div>
+          </section>
+        <% } %>
+
+        <% if (descText && String(descText).trim() && descText !== "-") { %>
+          <div class="property-details-description">
+            <h3 class="property-details-description__title">Description</h3>
+            <p class="property-details-description__text"><%= descText %></p>
+          </div>
+        <% } else { %>
+          <div class="property-details-description property-details-description--empty">
+            <h3 class="property-details-description__title">Description</h3>
+            <p class="property-details-description__text property-details-description__placeholder">Details on file — ask us for the full brief.</p>
+          </div>
+        <% } %>
+
+      </div>
+    </div>
+
+    <% if (hasMapCoords) { %>
+      <section class="property-maps-section" aria-label="Location maps">
+        <h2 class="property-maps-title">Location</h2>
+        <% if (googleMapsKey) { %>
+          <div class="property-maps-grid">
+            <div class="property-map-frame-wrap">
+              <p class="property-map-label">Satellite</p>
+              <iframe
+                class="property-map-iframe"
+                title="Satellite map"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                src="https://www.google.com/maps/embed/v1/view?key=<%= googleMapsKey %>&center=<%= mapLat %>,<%= mapLng %>&zoom=18&maptype=satellite"
+              ></iframe>
+            </div>
+            <div class="property-map-frame-wrap">
+              <p class="property-map-label">Street View</p>
+              <iframe
+                class="property-map-iframe"
+                title="Street View"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+                src="https://www.google.com/maps/embed/v1/streetview?key=<%= googleMapsKey %>&location=<%= mapLat %>,<%= mapLng %>&heading=210&pitch=10&fov=80"
+              ></iframe>
+            </div>
+          </div>
+          <p class="property-map-api-note">Maps use your server&rsquo;s <code>GOOGLE_MAPS_API_KEY</code> (restrict by HTTP referrer in Google Cloud).</p>
+        <% } else { %>
+          <div class="property-maps-fallback">
+            <iframe
+              class="property-map-iframe property-map-iframe--single"
+              title="Map"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+              src="https://maps.google.com/maps?q=<%= mapLat %>,<%= mapLng %>&z=18&output=embed"
+            ></iframe>
+            <div class="property-map-links">
+              <a class="secondary-btn" href="https://www.google.com/maps/@<%= mapLat %>,<%= mapLng %>,18z/data=!3m1!1e3" target="_blank" rel="noopener noreferrer">Satellite in Google Maps</a>
+              <a class="secondary-btn" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=<%= mapLat %>,<%= mapLng %>" target="_blank" rel="noopener noreferrer">Street View in Google Maps</a>
+            </div>
+            <p class="property-map-api-note">
+              For embedded satellite and Street View here, set <code>GOOGLE_MAPS_API_KEY</code> on the server (same key as geocoding works with Maps Embed API enabled).
+            </p>
+          </div>
+        <% } %>
+      </section>
+    <% } %>
+
+    <% if (similarProperties && similarProperties.length > 0) { %>
+      <section class="similar-listings-section" aria-label="Similar listings">
+        <h2 class="similar-listings-title">Similar listings</h2>
+        <p class="similar-listings-hint">Other units in Maitland or Paarden Eiland within about 500 m² of this size.</p>
+        <div class="similar-listings-grid">
+          <% similarProperties.forEach((sp) => { %>
+            <article class="similar-listing-card">
+              <a href="/property/<%= sp.id %>" class="similar-listing-card__link">
+                <% if (sp.cardImage || sp.displayImage) { %>
+                  <div class="similar-listing-card__img-wrap">
+                    <img src="/uploads/<%= sp.cardImage || sp.displayImage %>" alt="" class="similar-listing-card__img">
+                  </div>
+                <% } else { %>
+                  <div class="similar-listing-card__img-wrap similar-listing-card__img-wrap--empty">No image</div>
+                <% } %>
+                <div class="similar-listing-card__body">
+                  <h3 class="similar-listing-card__title"><%= sp.name %></h3>
+                  <p class="similar-listing-card__meta"><%= sp.area %> · <%= sp.propertyTypeLabel || "Industrial" %> · <%= sp.size || "—" %></p>
+                  <p class="similar-listing-card__price"><%= sp.price || "—" %></p>
+                </div>
+              </a>
+            </article>
+          <% }) %>
+        </div>
+      </section>
+    <% } %>
+  </main>
+
+</body>
+</html>

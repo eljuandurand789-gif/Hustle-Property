@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Zone — Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin page-bg--agent-zone">
+
+  <%- include('partials/admin-header', { adminHeroTagline: 'Deals & commission', adminNavActive: 'agentZone' }) %>
+
+  <main class="content-wrap agent-zone-main agent-zone-main--shell">
+    <section class="form-card agent-zone-filters">
+      <form method="GET" action="/admin/agent-zone" class="agent-zone-filter-form">
+        <div class="form-group agent-inline">
+          <label for="agentId">Agent</label>
+          <select name="agentId" id="agentId" class="agent-select">
+            <% agents.forEach(a => { %>
+              <option value="<%= a.id %>" <%= selectedAgentId === a.id ? 'selected' : '' %>>
+                <%= a.name %>
+              </option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="form-group agent-inline">
+          <label for="year">Year</label>
+          <select name="year" id="year" class="agent-year-select">
+            <% (typeof yearOptions !== 'undefined' ? yearOptions : []).forEach(function (y) { %>
+              <option value="<%= y %>" <%= String(year) === String(y) ? 'selected' : '' %>><%= y %></option>
+            <% }); %>
+          </select>
+        </div>
+        <button type="submit" class="primary-btn agent-filter-submit">Apply</button>
+      </form>
+
+      <% if (selectedAgentId) { %>
+        <a href="/admin/agent-zone/deals/new?agentId=<%= selectedAgentId %>&year=<%= year %>" class="primary-btn agent-add-deal">
+          + Add deal
+        </a>
+      <% } %>
+    </section>
+
+    <% if (typeof dailyQuote !== "undefined" && dailyQuote) { %>
+    <section class="agent-zone-quote" aria-label="Daily motivation">
+      <p class="agent-zone-quote__text"><%= dailyQuote %></p>
+    </section>
+    <% } %>
+
+    <% if (selectedAgentId) { %>
+      <% 
+        const fmtZAR = (n) => (Number.isFinite(n) && n > 0)
+          ? "R " + n.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : "—";
+        const fmtZARMoney = (n) => (Number.isFinite(n) && n >= 0)
+          ? "R " + n.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : "—";
+        const invVs = typeof invoiceVsTargetPct !== "undefined" ? Number(invoiceVsTargetPct) : 0;
+        const totInv = typeof totalInvoiceForYear !== "undefined" ? Number(totalInvoiceForYear) : Number(stats.totalInvoice) || 0;
+        const expCount = deals.filter((d) => Number(d.is_expected) === 1).length;
+        const confCount = deals.length - expCount;
+        const mC = typeof dashboardMonthConfirmed !== "undefined" ? dashboardMonthConfirmed : {};
+        const invTarget = Number(invoiceTargetMonthly);
+        const safeInvTarget = Number.isFinite(invTarget) && invTarget > 0 ? invTarget : 150000;
+        const atm =
+          typeof annualTargetMonths !== "undefined" && Number(annualTargetMonths) > 0
+            ? Number(annualTargetMonths)
+            : 12;
+        const commTgtAnnual =
+          typeof commissionInvoiceTargetAnnual !== "undefined" && Number(commissionInvoiceTargetAnnual) > 0
+            ? Number(commissionInvoiceTargetAnnual)
+            : safeInvTarget * atm;
+        const curActual = typeof dashboardMonthConfirmedRental !== "undefined" ? Number(dashboardMonthConfirmedRental) : 0;
+        const curExpected = typeof dashboardMonthExpectedRental !== "undefined" ? Number(dashboardMonthExpectedRental) : 0;
+        const curCombined = curActual + curExpected;
+        const monthBarMax = Math.max(safeInvTarget, curCombined, 1);
+        const monthBarPct = monthBarMax > 0 ? Math.min(100, (curCombined / monthBarMax) * 100) : 0;
+        const monthTargetLinePct = monthBarMax > 0 ? Math.min(100, (safeInvTarget / monthBarMax) * 100) : 0;
+        const monthVsTargetPct = safeInvTarget > 0 ? Math.min(999, (curCombined / safeInvTarget) * 100) : 0;
+      %>
+      <section class="agent-stats-grid agent-stats-grid--compact">
+        <div class="agent-stat-card">
+          <span class="agent-stat-label">Deals in <%= year %></span>
+          <strong class="agent-stat-value"><%= stats.count %></strong>
+          <p class="agent-stat-sub">Confirmed <%= confCount %><% if (expCount) { %> · Expected <%= expCount %><% } %></p>
+        </div>
+        <div class="agent-stat-card agent-stat-card--invoice">
+          <span class="agent-stat-label">Total invoice (<%= year %>)</span>
+          <strong class="agent-stat-value"><%= fmtZARMoney(totInv) %></strong>
+          <p class="agent-stat-sub">Target R <%= commTgtAnnual.toLocaleString("en-ZA", { maximumFractionDigits: 0 }) %>/yr · <%= invVs >= 100 ? invVs.toFixed(0) : invVs.toFixed(1) %>% of target</p>
+        </div>
+      </section>
+
+      <section class="form-card agent-month-target-section" aria-labelledby="month-target-heading">
+        <div class="agent-month-target-row">
+          <div class="agent-month-target-bar-side">
+            <h2 id="month-target-heading" class="agent-section-title agent-section-title--sm">Monthly target</h2>
+            <p class="agent-month-target-period"><%= typeof thisMonthLabel !== "undefined" ? thisMonthLabel : "" %></p>
+            <p class="agent-month-target-line-meta">
+              <strong>R <%= safeInvTarget.toLocaleString("en-ZA") %></strong>/mo invoice target
+              <% if (year === "2025") { %> <span class="agent-target-year-hint">(Jul–Dec 2025 · R100k/mo)</span><% } %>
+            </p>
+            <div class="agent-month-bar-cell agent-month-bar-cell--featured">
+              <div
+                class="agent-month-bar-track agent-month-bar-track--featured"
+                role="img"
+                aria-label="Invoice bar for <%= typeof thisMonthLabel !== 'undefined' ? thisMonthLabel : 'this month' %>: closed R <%= curActual %>, expected R <%= curExpected %>, monthly target R <%= safeInvTarget %>"
+              >
+                <div class="agent-month-bar-combined" style="width: <%= monthBarPct.toFixed(2) %>%">
+                  <% if (curActual > 0) { %>
+                    <div class="agent-month-bar-seg agent-month-bar-seg--actual" style="flex: <%= curActual %> 1 0"></div>
+                  <% } %>
+                  <% if (curExpected > 0) { %>
+                    <div class="agent-month-bar-seg agent-month-bar-seg--expected" style="flex: <%= curExpected %> 1 0"></div>
+                  <% } %>
+                </div>
+                <span
+                  class="agent-month-bar-target"
+                  style="left: <%= monthTargetLinePct.toFixed(2) %>%; transform: translateX(-50%)"
+                  title="Monthly target R <%= safeInvTarget.toLocaleString('en-ZA') %>"
+                ></span>
+              </div>
+            </div>
+            <p class="agent-annual-pie-legend agent-annual-pie-legend--compact agent-month-target-bar-legend">
+              <span class="agent-annual-leg agent-annual-leg--conf">Closed</span>
+              <span class="agent-annual-leg agent-annual-leg--exp">Expected</span>
+              <span class="agent-month-target-legend-gap">Navy line = target</span>
+            </p>
+          </div>
+          <div class="agent-month-target-copy">
+            <p class="agent-dash-slim-note agent-dash-slim-note--embed">
+              Targets use each deal&rsquo;s <strong>invoice total</strong>. VAT incl.; excl. ÷1.15
+            </p>
+            <p class="agent-dash-slim-target-line agent-dash-slim-target-line--embed">
+              <strong>This month:</strong> R <%= curCombined.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %> invoiced (closed + expected)
+              · <%= monthVsTargetPct >= 100 ? monthVsTargetPct.toFixed(0) : monthVsTargetPct.toFixed(1) %>% of R <%= safeInvTarget.toLocaleString("en-ZA", { maximumFractionDigits: 0 }) %> target
+            </p>
+            <div class="agent-dash-panel agent-dash-panel--slim-month agent-dash-panel--embedded">
+              <div class="agent-dash-month-head">
+                <h3 class="agent-dash-panel-title agent-dash-panel-title--slim">Confirmed</h3>
+                <span class="agent-dash-badge agent-dash-badge--confirmed agent-dash-badge--xs">This month</span>
+              </div>
+              <dl class="agent-dash-dl agent-dash-dl--split-month">
+                <div>
+                  <dt>Invoice total</dt>
+                  <dd>
+                    <span class="agent-dash-incl agent-dash-incl--slim"><%= fmtZAR(mC.invoiceIncl) %></span>
+                    <span class="agent-dash-excl agent-dash-excl--slim">excl. VAT <%= fmtZAR(mC.invoiceExcl) %></span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Your payout</dt>
+                  <dd>
+                    <span class="agent-dash-incl agent-dash-incl--slim"><%= fmtZAR(mC.payoutIncl) %></span>
+                    <span class="agent-dash-excl agent-dash-excl--slim">excl. VAT <%= fmtZAR(mC.payoutExcl) %></span>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-card agent-yearly-breakdown agent-yearly-breakdown--compact" aria-labelledby="agent-monthly-heading">
+        <div class="agent-monthly-section-head">
+          <h2 id="agent-monthly-heading" class="agent-section-title agent-section-title--sm">Invoice by month — <%= year %></h2>
+          <form method="GET" action="/admin/agent-zone" class="agent-monthly-year-form">
+            <input type="hidden" name="agentId" value="<%= selectedAgentId %>">
+            <label class="agent-monthly-year-label">Year
+              <select name="year" class="agent-year-select agent-monthly-year-select" aria-label="Year for monthly breakdown">
+                <% (typeof yearOptions !== "undefined" ? yearOptions : []).forEach(function (y) { %>
+                  <option value="<%= y %>" <%= String(year) === String(y) ? "selected" : "" %>><%= y %></option>
+                <% }); %>
+              </select>
+            </label>
+            <button type="submit" class="secondary-btn agent-monthly-year-apply">Apply</button>
+          </form>
+        </div>
+        <p class="agent-month-click-hint">Click a <strong>month</strong> to list deals recorded in that month (by reporting / commencement date).</p>
+        <p class="agent-target-note agent-target-note--tight">
+          <% if (String(year) === "2025") { %>
+          <strong>2025</strong> counts <strong>July–December</strong> only (January–June are out of scope for this year). Monthly target <strong>R <%= safeInvTarget.toLocaleString("en-ZA") %></strong> on <strong>invoice total</strong>. <span class="agent-legend-confirmed">Closed</span> + <span class="agent-legend-expected">expected</span>; <strong class="agent-legend-hit">Green row</strong> = met or beat monthly target.
+          <% } else { %>
+          Monthly target <strong>R <%= safeInvTarget.toLocaleString("en-ZA") %></strong> on <strong>invoice total</strong>. <span class="agent-legend-confirmed">Closed</span> + <span class="agent-legend-expected">expected</span>; navy = target. <strong class="agent-legend-hit">Green row</strong> = met or beat monthly target.
+          <% } %>
+        </p>
+        <div class="table-wrap agent-monthly-table-wrap agent-monthly-table-wrap--scroll">
+          <table class="agent-monthly-table agent-monthly-table--split agent-monthly-table--compact-bars">
+            <thead>
+              <tr>
+                <th scope="col">Month</th>
+                <th scope="col">Closed</th>
+                <th scope="col">Expected</th>
+                <th scope="col">Total</th>
+                <th scope="col">vs target</th>
+                <th scope="col">Bar</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; %>
+              <% const act = typeof monthlyInvoiceActual !== "undefined" ? monthlyInvoiceActual : []; %>
+              <% const exp = typeof monthlyInvoiceExpected !== "undefined" ? monthlyInvoiceExpected : []; %>
+              <% monthNames.forEach((mn, i) => {
+                const actualAmt = act[i] || 0;
+                const expectedAmt = exp[i] || 0;
+                const amt = actualAmt + expectedAmt;
+                const diff = amt - safeInvTarget;
+                const barPct = chartMax > 0 ? Math.min(100, (amt / chartMax) * 100) : 0;
+                const targetLinePct = chartMax > 0 ? Math.min(100, (safeInvTarget / chartMax) * 100) : 0;
+                const isY2025 = String(year) === "2025";
+                const rowMuted = isY2025 && i < 6;
+                const rowHit = !rowMuted && amt >= safeInvTarget;
+                const rowClass = [
+                  rowHit ? "agent-month-row--hit" : "",
+                  rowMuted ? "agent-month-row--muted" : ""
+                ].filter(Boolean).join(" ");
+              %>
+                <tr<%= rowClass ? ' class="' + rowClass + '"' : '' %>>
+                  <th scope="row">
+                    <% if (rowMuted) { %>
+                      <%= mn %>
+                    <% } else { %>
+                      <a href="/admin/agent-zone/month?agentId=<%= selectedAgentId %>&year=<%= year %>&month=<%= i %>" class="agent-month-link"><%= mn %></a>
+                    <% } %>
+                  </th>
+                  <td>R <%= actualAmt.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %></td>
+                  <td class="agent-month-expected-cell">R <%= expectedAmt.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %></td>
+                  <td>R <%= amt.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %></td>
+                  <td class="<%= diff >= 0 ? 'agent-month-diff--pos' : 'agent-month-diff--neg' %>">
+                    <%= diff >= 0 ? "+" : "" %>R <%= diff.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) %>
+                  </td>
+                  <td class="agent-month-bar-cell">
+                    <div class="agent-month-bar-track agent-month-bar-track--sm" role="img" aria-label="Invoice bar for <%= mn %>: closed R <%= actualAmt %>, expected R <%= expectedAmt %>">
+                      <div class="agent-month-bar-combined" style="width: <%= barPct.toFixed(2) %>%">
+                        <% if (actualAmt > 0) { %>
+                          <div class="agent-month-bar-seg agent-month-bar-seg--actual" style="flex: <%= actualAmt %> 1 0"></div>
+                        <% } %>
+                        <% if (expectedAmt > 0) { %>
+                          <div class="agent-month-bar-seg agent-month-bar-seg--expected" style="flex: <%= expectedAmt %> 1 0"></div>
+                        <% } %>
+                      </div>
+                      <span class="agent-month-bar-target" style="left: <%= targetLinePct.toFixed(2) %>%; transform: translateX(-50%)" title="Monthly target R <%= safeInvTarget.toLocaleString('en-ZA') %>"></span>
+                    </div>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="form-card agent-deals-table-card">
+        <h2 class="agent-section-title">All deals (<%= year %>)</h2>
+        <p class="agent-deals-sort-note">Sorted by reporting date (commencement / deal date).</p>
+        <% const dealsForTable = typeof dealsChronological !== "undefined" ? dealsChronological : deals; %>
+        <% if (!dealsForTable.length) { %>
+          <p class="agent-empty">No deals yet. Add one with <strong>+ Add deal</strong>.</p>
+        <% } else { %>
+          <div class="table-wrap">
+            <table class="agent-deals-table">
+              <thead>
+                <tr>
+                  <th>Deal name</th>
+                  <th>Address</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th>Lease end</th>
+                  <th>Lease</th>
+                  <th>Rental</th>
+                  <th>Invoice</th>
+                  <th>Your %</th>
+                  <th>Your cut</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% dealsForTable.forEach(d => {
+                  const inv = Number(d.invoice_total);
+                  const pct = Number(d.agent_share_percent);
+                  const sharePct = Number.isFinite(pct) ? pct : 50;
+                  const yourCut = Number.isFinite(inv) ? inv * (sharePct / 100) : null;
+                %>
+                  <tr>
+                    <td><%= d.property_name || "—" %></td>
+                    <td class="td-address"><%= d.property_address %></td>
+                    <td>
+                      <% if (Number(d.is_expected) === 1) { %>
+                        <span class="deal-pipeline-badge">Expected</span>
+                      <% } else { %>
+                        <span class="deal-confirmed-badge">Confirmed</span>
+                      <% } %>
+                    </td>
+                    <td><%= d.deal_date || "—" %></td>
+                    <td><%= d.lease_end_date || "—" %></td>
+                    <td><%= d.lease_period || "—" %></td>
+                    <td><%= d.actual_rental || "—" %></td>
+                    <td>
+                      <%= Number.isFinite(inv) ? "R " + inv.toLocaleString("en-ZA") : "—" %>
+                    </td>
+                    <td><%= sharePct %>%</td>
+                    <td>
+                      <%= yourCut != null ? "R " + yourCut.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—" %>
+                    </td>
+                    <td class="td-actions">
+                      <a href="/admin/agent-zone/deals/<%= d.id %>/edit?agentId=<%= selectedAgentId %>&year=<%= year %>" class="view-button small-action">Edit</a>
+                      <form action="/admin/agent-zone/deals/<%= d.id %>/delete" method="POST" class="inline-delete-form" onsubmit="return confirm('Delete this deal?');">
+                        <button type="submit" class="secondary-btn danger-btn small-action">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </section>
+    <% } %>
+  </main>
+
+  <script>
+    (function () {
+      var form = document.querySelector(".agent-zone-filter-form");
+      if (!form) return;
+      var year = document.getElementById("year");
+      var agent = document.getElementById("agentId");
+      function submitFilter() {
+        form.submit();
+      }
+      if (year) year.addEventListener("change", submitFilter);
+      if (agent) agent.addEventListener("change", submitFilter);
+    })();
+  </script>
+
+</body>
+</html>

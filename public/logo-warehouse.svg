@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+  <rect width="120" height="120" rx="12" fill="#fff"/>
+  <!-- Sky -->
+  <rect x="0" y="0" width="120" height="120" rx="12" fill="url(#whSky)"/>
+  <defs>
+    <linearGradient id="whSky" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e8f0fa"/>
+      <stop offset="1" stop-color="#cfe0f5"/>
+    </linearGradient>
+    <linearGradient id="whRoof" x1="60" y1="38" x2="60" y2="72" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1a3a5f"/>
+      <stop offset="1" stop-color="#0f2847"/>
+    </linearGradient>
+  </defs>
+  <!-- Chimney -->
+  <rect x="78" y="28" width="14" height="28" rx="1" fill="#7c2d12" stroke="#0f2847" stroke-width="1"/>
+  <rect x="80" y="24" width="10" height="6" rx="1" fill="#374151"/>
+  <!-- Main warehouse body -->
+  <path d="M18 72h84v32H18V72z" fill="#1e4976" stroke="#0f2847" stroke-width="1.5"/>
+  <!-- Saw-tooth / industrial roof line -->
+  <path d="M18 72 L30 52 L42 62 L54 48 L66 58 L78 50 L90 60 L102 52 V72H18z" fill="url(#whRoof)" stroke="#0f2847" stroke-width="1.2"/>
+  <!-- Roll-up door -->
+  <rect x="44" y="82" width="32" height="22" rx="2" fill="#94a3b8" stroke="#0f2847" stroke-width="1"/>
+  <line x1="48" y1="88" x2="72" y2="88" stroke="#64748b" stroke-width="1"/>
+  <line x1="48" y1="94" x2="72" y2="94" stroke="#64748b" stroke-width="1"/>
+  <!-- Windows -->
+  <rect x="24" y="78" width="10" height="8" rx="1" fill="#bae6fd" stroke="#0f2847" stroke-width="0.8"/>
+  <rect x="86" y="78" width="10" height="8" rx="1" fill="#bae6fd" stroke="#0f2847" stroke-width="0.8"/>
+  <!-- Orange accent stripe (brand) -->
+  <rect x="18" y="100" width="84" height="6" fill="#f58220"/>
+  <rect x="18" y="104" width="84" height="4" fill="#ea580c"/>
+</svg>

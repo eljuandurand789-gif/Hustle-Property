@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buildings &amp; parks — Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin">
+
+  <%- include('partials/admin-header', { adminHeroTagline: 'Buildings & industrial parks', adminNavActive: 'buildings' }) %>
+
+  <main class="content-wrap">
+    <section class="form-card admin-dashboard-card">
+      <div class="admin-header-row">
+        <h2 class="admin-saved-title">Buildings &amp; industrial parks</h2>
+        <a href="/admin/buildings/new" class="primary-btn add-property-btn">+ Add building</a>
+      </div>
+      <p class="buildings-intro">
+        Create a park or building once, add photos and description, then link each unit to it. Units can show shared building content on the website or use their own details.
+      </p>
+    </section>
+
+    <% if (!buildings.length) { %>
+      <section class="empty-state">
+        <p>No buildings yet. Add one to group units under a shared landing page.</p>
+      </section>
+    <% } else { %>
+      <section class="form-card">
+        <div class="table-wrap">
+          <table class="agent-deals-table buildings-admin-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Units linked</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% buildings.forEach(b => { %>
+                <tr>
+                  <td><strong><%= b.name %></strong></td>
+                  <td><%= b.unit_count %></td>
+                  <td class="td-actions">
+                    <a href="/building/<%= b.id %>" class="secondary-btn small-action" target="_blank">View public</a>
+                    <a href="/admin/buildings/<%= b.id %>/edit" class="view-button small-action">Edit</a>
+                    <form action="/admin/buildings/<%= b.id %>/delete" method="POST" class="inline-delete-form" onsubmit="return confirm('Delete this building? Units will be unlinked.');">
+                      <button type="submit" class="secondary-btn danger-btn small-action">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% } %>
+  </main>
+
+</body>
+</html>

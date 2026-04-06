@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= monthNames[selectedMonth] %> <%= year %> — Deals — Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin page-bg--agent-zone">
+
+  <%- include('partials/admin-header', { adminHeroTagline: 'Deals & commission', adminNavActive: 'agentZone' }) %>
+
+  <main class="content-wrap agent-zone-main agent-zone-main--shell">
+    <section class="form-card agent-zone-month-nav">
+      <a href="/admin/agent-zone?agentId=<%= selectedAgentId %>&year=<%= encodeURIComponent(year) %>" class="secondary-btn agent-zone-back-dashboard">
+        ← Back to dashboard
+      </a>
+      <p class="agent-zone-month-nav__meta">
+        <% const agent = (agents || []).find(function (a) { return a.id === selectedAgentId; }); %>
+        <%= agent ? agent.name : "Agent" %> · <%= monthNames[selectedMonth] %> <%= year %>
+      </p>
+    </section>
+
+    <section class="form-card agent-month-detail-card" aria-labelledby="agent-month-detail-heading">
+      <div class="agent-month-detail-head">
+        <h1 id="agent-month-detail-heading" class="agent-section-title">
+          Deals in <%= monthNames[selectedMonth] %> <%= year %>
+        </h1>
+      </div>
+      <% if (!monthDetailDeals.length) { %>
+        <p class="agent-empty">No deals recorded in this month (by invoice / commencement date).</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table class="agent-deals-table agent-deals-table--month-detail">
+            <thead>
+              <tr>
+                <th>Deal name</th>
+                <th>Address</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th>Rental</th>
+                <th>Invoice</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% monthDetailDeals.forEach(function (d) {
+                const inv = Number(d.invoice_total);
+              %>
+                <tr>
+                  <td><%= d.property_name || "—" %></td>
+                  <td class="td-address"><%= d.property_address %></td>
+                  <td>
+                    <% if (Number(d.is_expected) === 1) { %>
+                      <span class="deal-pipeline-badge">Expected</span>
+                    <% } else { %>
+                      <span class="deal-confirmed-badge">Confirmed</span>
+                    <% } %>
+                  </td>
+                  <td><%= d.deal_date || "—" %></td>
+                  <td><%= d.actual_rental || d.asking_rental || "—" %></td>
+                  <td><%= Number.isFinite(inv) ? "R " + inv.toLocaleString("en-ZA") : "—" %></td>
+                  <td class="td-actions">
+                    <a href="/admin/agent-zone/deals/<%= d.id %>/edit?agentId=<%= selectedAgentId %>&year=<%= year %>" class="view-button small-action">Edit</a>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+
+    <% if (monthsWithDeals.length) { %>
+    <section class="form-card agent-zone-other-months" aria-labelledby="other-months-heading">
+      <h2 id="other-months-heading" class="agent-section-title agent-section-title--sm">Other months with deals (<%= year %>)</h2>
+      <ul class="agent-zone-other-months__list">
+        <% monthsWithDeals.forEach(function (m) { %>
+          <li>
+            <% if (m.monthIndex === selectedMonth) { %>
+              <span class="agent-zone-other-months__current"><%= monthNamesShort[m.monthIndex] %> (<%= m.count %>)</span>
+            <% } else { %>
+              <a href="/admin/agent-zone/month?agentId=<%= selectedAgentId %>&year=<%= encodeURIComponent(year) %>&month=<%= m.monthIndex %>" class="agent-zone-other-months__link">
+                <%= monthNamesShort[m.monthIndex] %> <span class="agent-zone-other-months__count">(<%= m.count %>)</span>
+              </a>
+            <% } %>
+          </li>
+        <% }); %>
+      </ul>
+    </section>
+    <% } %>
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= areaName %> — listings &amp; insights | Hustle Property</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--area-listings">
+
+  <header class="property-public-hero property-public-hero--area">
+    <a href="/" class="property-public-hero__back">← All listings</a>
+    <div class="property-public-hero__brand">
+      <div class="property-public-logo-panel">
+        <a href="/" class="property-public-logo-link" aria-label="Hustle Property — home">
+          <img src="/logo.png" alt="Hustle Property" class="property-public-logo" width="200" height="auto" decoding="async">
+        </a>
+      </div>
+      <p class="property-public-hero__subtitle">Area guide</p>
+    </div>
+    <a href="/contact" class="property-public-hero__contact">Contact us</a>
+  </header>
+
+  <main class="content-wrap area-listings-main">
+    <div class="home-results-split area-listings-split">
+      <div class="home-results-split__map">
+        <section class="map-section area-listings-map-section map-section--split-col" id="property-map-section" aria-label="Listing map for <%= areaName %>">
+          <div class="map-card map-card--interactive">
+            <h2>Map — <%= areaName %></h2>
+            <p class="map-note">Pins show active listings (To Let / For Sale) in this area.</p>
+            <div id="area-property-map" class="property-leaflet-map" role="application" aria-label="Map of listings in <%= areaName %>"></div>
+            <p class="map-loading" id="area-map-loading">Loading map…</p>
+          </div>
+        </section>
+      </div>
+      <div class="home-results-split__listings" id="home-search-results">
+        <div class="home-listings-wrap area-listings-wrap area-listings-wrap--first">
+          <div class="home-listings-toolbar">
+            <h1 class="home-listings-toolbar__title">Browse listings in <%= areaName %></h1>
+            <form class="home-browse-area-form" method="get" action="/" aria-label="Switch area">
+              <input type="hidden" name="home_search" value="1">
+              <input type="hidden" name="keywords" value="<%= typeof keywords !== 'undefined' ? keywords : '' %>">
+              <input type="hidden" name="status" value="<%= typeof selectedStatus !== 'undefined' ? selectedStatus : '' %>">
+              <input type="hidden" name="property_type" value="<%= typeof selectedPropertyType !== 'undefined' ? selectedPropertyType : '' %>">
+              <input type="hidden" name="amps_min" value="<%= typeof ampsMin !== 'undefined' ? ampsMin : '' %>">
+              <input type="hidden" name="height_min" value="<%= typeof heightMin !== 'undefined' ? heightMin : '' %>">
+              <label class="home-browse-area-form__label" for="browse-area-area-page">Area</label>
+              <select class="home-browse-area-form__select" id="browse-area-area-page" name="area" onchange="navigateBrowseByArea(this)">
+                <option value="" <%= !selectedArea ? 'selected' : '' %>>All areas</option>
+                <option value="Maitland" <%= selectedArea === 'Maitland' ? 'selected' : '' %>>Maitland</option>
+                <option value="Paarden Eiland" <%= selectedArea === 'Paarden Eiland' ? 'selected' : '' %>>Paarden Eiland</option>
+              </select>
+            </form>
+          </div>
+
+        <% if (!properties || properties.length === 0) { %>
+          <section class="empty-state home-listings-empty">
+            <h2>No properties found in <%= areaName %></h2>
+            <p>Try <a href="/">searching all listings</a> or <a href="/contact">contact us</a> for a shortlist.</p>
+          </section>
+        <% } else { %>
+        <section class="property-grid home-grid">
+          <% properties.forEach(property => { %>
+            <article class="property-card <%= property.images && property.images.length > 1 ? 'property-card--gallery' : '' %>"
+              <% if (property.images && property.images.length > 1) { %>
+                data-gallery='<%- JSON.stringify(property.images.map(i => "/uploads/" + i.filename)) %>'
+              <% } %>
+            >
+              <div class="card-main-image-wrap">
+                <% if (property.video_filename) { %>
+                  <span class="property-card-video-badge">Video</span>
+                <% } %>
+                <% if (property.cardImage) { %>
+                  <a href="/property/<%= property.id %>" class="card-main-image-link" aria-label="View <%= property.name %> listing">
+                    <img id="main-card-image-<%= property.id %>" src="/uploads/<%= property.cardImage %>" alt="<%= property.name %>" class="card-main-image">
+                  </a>
+                <% } else { %>
+                  <a href="/property/<%= property.id %>" class="card-main-image-link card-main-image-link--empty" aria-label="View <%= property.name %>">
+                    <div class="no-image large-no-image">No Image</div>
+                  </a>
+                <% } %>
+              </div>
+              <% if (property.images && property.images.length > 0) { %>
+                <div class="thumb-scroll-row">
+                  <% property.images.slice(0, 10).forEach((image, tidx) => { %>
+                    <img src="/uploads/<%= image.filename %>" alt="" class="homepage-thumb" onclick="var m=document.getElementById('main-card-image-<%= property.id %>');if(m)m.src='/uploads/<%= image.filename %>';">
+                  <% }) %>
+                </div>
+              <% } %>
+              <div class="property-content compact-content">
+                <div class="status-badge"><%= property.statusLabel %></div>
+                <h3><%= property.name %></h3>
+                <p><strong>Type:</strong> <%= property.propertyTypeLabel || "—" %></p>
+                <p><strong>Size:</strong> <%= property.size || "-" %></p>
+                <p><strong>Location:</strong> <%= property.address || "-" %></p>
+                <p><strong>Availability:</strong> <%= property.availabilityDisplay || "-" %></p>
+                <p><strong>Area:</strong> <%= property.area || "-" %></p>
+                <a href="/property/<%= property.id %>" class="view-button">View Listing</a>
+              </div>
+            </article>
+          <% }) %>
+        </section>
+        <% } %>
+        </div>
+      </div>
+    </div>
+
+    <section class="area-guide-section" aria-labelledby="area-guide-title">
+      <h2 id="area-guide-title" class="area-guide-section__heading">About <%= areaName %></h2>
+      <div class="area-page-hero area-page-hero--after-listings">
+        <div class="area-page-hero__text">
+          <p class="area-page-hero__eyebrow">Cape Town industrial &amp; commercial</p>
+          <p class="area-page-hero__sub area-page-hero__sub--guide-lead"><%= insights.subhead %></p>
+        </div>
+      </div>
+
+      <section class="area-insights" aria-label="Area details">
+        <div class="area-insights__grid">
+          <article class="area-insight-card area-insight-card--main">
+            <h3 class="area-insight-card__title">Location &amp; market</h3>
+            <% insights.intro.forEach(function (para) { %>
+              <p class="area-insight-card__p"><%= para %></p>
+            <% }); %>
+          </article>
+          <article class="area-insight-card area-insight-card--accent">
+            <h3 class="area-insight-card__title">At a glance</h3>
+            <ul class="area-insight-card__list">
+              <% insights.bullets.forEach(function (item) { %>
+                <li><%= item %></li>
+              <% }); %>
+            </ul>
+          </article>
+        </div>
+        <article class="area-insight-strip">
+          <h3 class="area-insight-strip__title">Development &amp; outlook</h3>
+          <p class="area-insight-strip__p"><%= insights.development %></p>
+        </article>
+      </section>
+    </section>
+
+    <p class="area-listings-footer-hint">
+      <a href="/" class="area-listings-footer-hint__link">Search all Cape Town listings</a>
+      ·
+      <a href="/contact" class="area-listings-footer-hint__link">Talk to a broker</a>
+    </p>
+  </main>
+
+  <script src="/browse-area.js"></script>
+  <script>
+    (function () {
+      var sp = new URLSearchParams(location.search);
+      var go =
+        location.hash === "#home-search-results" || sp.get("scroll") === "results";
+      if (!go) return;
+      var el = document.getElementById("home-search-results");
+      if (!el) return;
+      var reduce =
+        window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      requestAnimationFrame(function () {
+        var y = el.getBoundingClientRect().top + window.pageYOffset - 12;
+        window.scrollTo({ top: Math.max(0, y), behavior: reduce ? "auto" : "smooth" });
+        if (sp.get("scroll") === "results") {
+          sp.delete("scroll");
+          var q = sp.toString();
+          history.replaceState(
+            null,
+            "",
+            location.pathname + (q ? "?" + q : "") + location.hash
+          );
+        }
+      });
+    })();
+  </script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    (function () {
+      document.querySelectorAll(".property-card--gallery").forEach(function (card) {
+        var raw = card.getAttribute("data-gallery");
+        if (!raw) return;
+        var urls;
+        try { urls = JSON.parse(raw); } catch (e) { return; }
+        if (!urls || urls.length < 2) return;
+        var img = card.querySelector(".card-main-image");
+        if (!img) return;
+        var idx = 0, timer, initialSrc = img.getAttribute("src");
+        card.addEventListener("mouseenter", function () {
+          timer = setInterval(function () {
+            idx = (idx + 1) % urls.length;
+            img.src = urls[idx];
+          }, 1600);
+        });
+        card.addEventListener("mouseleave", function () {
+          clearInterval(timer);
+          if (initialSrc) img.src = initialSrc;
+          idx = 0;
+        });
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      var el = document.getElementById("area-property-map");
+      var loading = document.getElementById("area-map-loading");
+      var areaName = <%- JSON.stringify(areaName) %>;
+      var defaultCenter = [<%= mapCenter.lat %>, <%= mapCenter.lng %>];
+      var defaultZoom = <%= typeof mapZoom !== 'undefined' ? mapZoom : 14 %>;
+      if (!el || typeof L === "undefined") return;
+      var map = L.map(el, { scrollWheelZoom: true }).setView(defaultCenter, defaultZoom);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+      var icon = L.icon({ iconUrl: "/pin.png", iconSize: [56, 64], iconAnchor: [28, 64], popupAnchor: [0, -64], className: "map-pin-leaflet-icon" });
+      var url = "/api/map-properties?area=" + encodeURIComponent(areaName);
+      fetch(url)
+        .then(function (r) { if (!r.ok) throw new Error("Map API failed"); return r.json(); })
+        .then(function (points) {
+          if (loading) loading.style.display = "none";
+          if (!points || !points.length) {
+            if (loading) {
+              loading.textContent = "No listings with map pins in this area yet.";
+              loading.style.display = "block";
+            }
+            return;
+          }
+          var group = [];
+          points.forEach(function (p) {
+            var m = L.marker([p.lat, p.lng], { icon: icon });
+            var html = "<strong>" + String(p.name || "Property").replace(/</g, "&lt;") + "</strong><br>" +
+              (p.typeLabel ? String(p.typeLabel).replace(/</g, "&lt;") + "<br>" : "") +
+              (p.area ? String(p.area).replace(/</g, "&lt;") + "<br>" : "") +
+              (p.address ? String(p.address).replace(/</g, "&lt;") + "<br>" : "") +
+              '<a href="' + p.url + '">View listing</a>';
+            m.bindPopup(html);
+            m.addTo(map);
+            group.push([p.lat, p.lng]);
+          });
+          if (group.length) map.fitBounds(group, { padding: [36, 36], maxZoom: 15 });
+        })
+        .catch(function () {
+          if (loading) { loading.textContent = "Could not load map data."; loading.style.display = "block"; }
+        });
+    })();
+  </script>
+</body>
+</html>

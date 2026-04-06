@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof pageTitle !== "undefined" ? pageTitle : "Track record" %> | Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--done-deals">
+  <%
+    const volZar = typeof totalLeaseVolumeZar !== "undefined" ? Number(totalLeaseVolumeZar) : 0;
+    const ddCount = typeof doneDealsCount !== "undefined" ? Number(doneDealsCount) : 0;
+    const showcase = typeof showcaseDeals !== "undefined" ? showcaseDeals : [];
+    const areas = typeof areasList !== "undefined" ? areasList : [];
+    const hi = typeof highestMonthlyRent !== "undefined" && highestMonthlyRent && typeof highestMonthlyRent === "object"
+      ? highestMonthlyRent
+      : { amount: 0, area: "" };
+    const hiAmt = Number(hi.amount);
+    const leaseStr = typeof leasePeriodDisplay !== "undefined" ? leasePeriodDisplay : "—";
+    function formatCommissionHeadline(zar) {
+      const z = Number(zar);
+      if (!Number.isFinite(z) || z <= 0) return "—";
+      if (z >= 1000000) {
+        const millions = z / 1000000;
+        let s = millions.toFixed(2).replace(/\.?0+$/, "");
+        return "R" + s + "m+";
+      }
+      return "R " + Math.round(z).toLocaleString("en-ZA");
+    }
+    function formatRandPerMonth(n) {
+      if (!Number.isFinite(n) || n <= 0) return "";
+      return "R " + Math.round(n).toLocaleString("en-ZA") + "/month";
+    }
+    const commHead = formatCommissionHeadline(volZar);
+    const highestLine = formatRandPerMonth(hiAmt);
+  %>
+
+  <header class="dd-header">
+    <div class="dd-header__bg" aria-hidden="true"></div>
+    <a href="/" class="dd-header__back">← Back to listings</a>
+    <div class="dd-header__brand">
+      <a href="/" class="dd-header__logo-link" aria-label="Hustle Property — home">
+        <img src="/logo.png" alt="" class="dd-header__logo" width="180" height="auto" decoding="async">
+      </a>
+    </div>
+  </header>
+
+  <main class="dd-main">
+    <section class="dd-hero" aria-labelledby="dd-hero-heading">
+      <div class="dd-hero__glow dd-hero__glow--1" aria-hidden="true"></div>
+      <div class="dd-hero__glow dd-hero__glow--2" aria-hidden="true"></div>
+      <div class="dd-hero__grid" aria-hidden="true"></div>
+      <p class="dd-hero__eyebrow">Cape Town · Industrial &amp; Commercial Property</p>
+      <h1 id="dd-hero-heading" class="dd-hero__title">
+        Track <span class="dd-hero__title-accent">record</span>
+      </h1>
+      <p class="dd-hero__lead">
+        Successful deals closed — confirmed mandates in your track record
+      </p>
+      <div class="dd-hero__stats dd-hero__stats--four">
+        <div class="dd-stat-tile dd-stat-tile--navy">
+          <span class="dd-stat-tile__num"><%= ddCount %></span>
+          <span class="dd-stat-tile__label">Deals closed — confirmed mandates (Cape Town industrial areas)</span>
+        </div>
+        <div class="dd-stat-tile dd-stat-tile--orange">
+          <span class="dd-stat-tile__num"><%= commHead %></span>
+          <span class="dd-stat-tile__label">Secured lease value</span>
+        </div>
+        <div class="dd-stat-tile dd-stat-tile--ghost dd-stat-tile--rental-stat">
+          <span class="dd-stat-tile__num"><%= highestLine || "—" %></span>
+          <span class="dd-stat-tile__label dd-stat-tile__label--stacked">
+            <span class="dd-stat-tile__label-line">Highest rental captured (monthly)</span>
+            <% if (hiAmt > 0 && hi.area) { %>
+            <span class="dd-stat-tile__label-line dd-stat-tile__label-line--sub"><%= hi.area %></span>
+            <% } else { %>
+            <span class="dd-stat-tile__label-line dd-stat-tile__label-line--sub">e.g. Paarden Eiland</span>
+            <% } %>
+          </span>
+        </div>
+        <div class="dd-stat-tile dd-stat-tile--teal dd-stat-tile--lease-stat">
+          <span class="dd-stat-tile__num"><%= leaseStr %></span>
+          <span class="dd-stat-tile__label">Total lease period — sum of all deal terms (years and months combined)</span>
+        </div>
+      </div>
+    </section>
+
+    <% if (areas.length) { %>
+    <section class="dd-marquee-section" aria-label="Areas covered">
+      <p class="dd-marquee__label">Areas</p>
+      <div class="dd-marquee dd-marquee--static" role="presentation">
+        <div class="dd-marquee__track dd-marquee__track--wrap">
+          <% const seenArea = Object.create(null);
+             const areasUnique = [];
+             (areas || []).forEach(function (a) {
+               var t = String(a || "").trim();
+               if (!t) return;
+               var k = t.toLowerCase();
+               if (seenArea[k]) return;
+               seenArea[k] = true;
+               areasUnique.push(t);
+             });
+             areasUnique.sort(function (a, b) { return a.localeCompare(b); });
+          %>
+          <% areasUnique.forEach(function (a) { %>
+            <span class="dd-marquee__chip"><%= a %></span>
+          <% }); %>
+        </div>
+      </div>
+    </section>
+    <% } %>
+
+    <% if (showcase.length) { %>
+    <section class="dd-showcase" aria-labelledby="dd-showcase-heading">
+      <div class="dd-showcase__head">
+        <h2 id="dd-showcase-heading" class="dd-showcase__title">Closed deals</h2>
+        <p class="dd-showcase__sub">Area, size, rental rate where available, property type, and close date.</p>
+      </div>
+      <div class="dd-showcase__grid">
+        <% showcase.forEach(function (d, idx) { %>
+          <article class="dd-deal-card" style="--dd-delay: <%= Math.min(idx, 12) * 0.04 %>s">
+            <div class="dd-deal-card__shine" aria-hidden="true"></div>
+            <h3 class="dd-deal-card__area"><%= d.area %></h3>
+            <p class="dd-deal-card__summary">
+              <span class="dd-deal-card__size-type"><%= d.sizeLabel %> <%= d.typeLabel %></span><% if (d.rateLine) { %>
+              <span class="dd-deal-card__rate"> <%= d.rateLine %></span><% } %><% if (d.closedLabel) { %>
+              <span class="dd-deal-card__closed"> Closed <%= d.closedLabel %></span><% } %>
+            </p>
+            <% if (!d.rateLine && d.rental && String(d.rental).trim() && d.rental !== "On request") { %>
+            <p class="dd-deal-card__rental-line"><%= d.rental %></p>
+            <% } else if (!d.rateLine && d.rental) { %>
+            <p class="dd-deal-card__rental-line dd-deal-card__rental-line--muted"><%= d.rental %></p>
+            <% } %>
+          </article>
+        <% }); %>
+      </div>
+    </section>
+    <% } %>
+
+    <section class="dd-reviews" aria-labelledby="dd-reviews-heading">
+      <div class="dd-reviews__head">
+        <h2 id="dd-reviews-heading" class="dd-reviews__title">What people say</h2>
+        <p class="dd-reviews__sub">
+          Google Maps reviews —
+          <a href="https://share.google/C3fOxKg45taFwCrdL" class="dd-reviews__maps-link" target="_blank" rel="noopener noreferrer">View Google Maps reviews</a>
+        </p>
+      </div>
+
+      <% const reviews = [
+        {
+          name: "Devon Morris",
+          role: "Local Guide",
+          headline: "Above & beyond",
+          text: "I had the pleasure of working with EJ during a recent property search. Once he understood what we were after, he quickly sent through a range of suitable options and followed up appropriately, never overbearing, just the right amount of check-ins.\nAlthough we ended up finding a place outside of his portfolio, EJ remained professional and courteous throughout the entire process. His attitude and approach really stood out.\nWe’ve got a few more projects coming up, and I’ll definitely be giving EJ a proper go on the next search. Keep up the great work, EJ!"
+        },
+        {
+          name: "Abdiraxman Haji",
+          role: "",
+          headline: "Great experience",
+          text: "I had the pleasure of working with EJ during a recent property search. Once he understood what we were after, he quickly sent through Keep up the great work, EJ!"
+        },
+        {
+          name: "Alex Hofmeyr",
+          role: "",
+          headline: "New premises",
+          text: "EJ was a great help on finding us new premises. Very proactive and really went the extra mile to work with us to find a space that suited our business perfectly."
+        },
+        {
+          name: "Maksim Jmihov",
+          role: "",
+          headline: "Industrial space",
+          text: "EJ helped us find a industrial space, and we are fully satisfied with the work and support provided!"
+        },
+        {
+          name: "Adam Kane-Smith",
+          role: "Local Guide",
+          headline: "Knowledgeable broker",
+          text: "EJ Durand is a knowledgeable and professional broker who knows his areas and the properties in them. A pleasure to deal with."
+        },
+        {
+          name: "Daniel Mugadza",
+          role: "",
+          headline: "Great service",
+          text: "Great service from EJ DURAND"
+        },
+        {
+          name: "Samistha Maharaj",
+          role: "Local Guide",
+          headline: "Professional & helpful",
+          text: "Recently worked with EJ and he was extremely professional and helpful. Keep up the great service."
+        },
+        {
+          name: "Nkululeko Nocanda",
+          role: "Local Guide",
+          headline: "Reliable professional",
+          text: "Great care and follow ups and genuine interest from these guys. EJ was very helpful in my search for a commercial space. I liked that he was able to present me with various options to choose from for my needs and actually get back to me with feedback. Its a great mark of a reliable professional!"
+        }
+      ];
+      const reviewPages = [];
+      for (var ri = 0; ri < reviews.length; ri += 3) {
+        reviewPages.push(reviews.slice(ri, ri + 3));
+      }
+      %>
+
+      <div class="dd-review-triptych" data-dd-review-triptych>
+        <div class="dd-review-triptych__toolbar">
+          <button type="button" class="dd-review-triptych__arrow dd-review-triptych__prev" aria-label="Previous testimonials">‹</button>
+          <button type="button" class="dd-review-triptych__arrow dd-review-triptych__next" aria-label="Next testimonials">›</button>
+        </div>
+        <div class="dd-review-triptych__viewport">
+          <% reviewPages.forEach(function (page, pi) { %>
+            <div class="dd-review-page <%= pi === 0 ? "is-active" : "" %>" data-page="<%= pi %>" role="group" aria-label="Testimonials <%= pi + 1 %> of <%= reviewPages.length %>">
+              <% page.forEach(function (r) { %>
+                <article class="dd-review-card">
+                  <div class="dd-review-card__top">
+                    <span class="dd-review-card__stars" aria-label="5 out of 5 stars">★★★★★</span>
+                    <p class="dd-review-card__name"><%= r.name %><% if (r.role) { %> <span class="dd-review-card__role">— <%= r.role %></span><% } %></p>
+                  </div>
+                  <h3 class="dd-review-card__headline"><%= r.headline %></h3>
+                  <p class="dd-review-card__body"><%= r.text.replace(/\n/g, " ") %></p>
+                </article>
+              <% }); %>
+            </div>
+          <% }); %>
+        </div>
+        <ul class="dd-review-triptych__dots" role="tablist" aria-label="Testimonial pages">
+          <% reviewPages.forEach(function (_, di) { %>
+            <li role="presentation">
+              <button type="button" class="dd-review-triptych__dot <%= di === 0 ? "is-active" : "" %>" data-page-to="<%= di %>" aria-label="Show testimonial group <%= di + 1 %>" <%= di === 0 ? "aria-current=\"true\"" : "" %>></button>
+            </li>
+          <% }); %>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      var root = document.querySelector("[data-dd-review-triptych]");
+      if (!root) return;
+      var pages = root.querySelectorAll(".dd-review-page");
+      var prev = root.querySelector(".dd-review-triptych__prev");
+      var next = root.querySelector(".dd-review-triptych__next");
+      var dots = root.querySelectorAll(".dd-review-triptych__dot");
+      var i = 0;
+      function show(n) {
+        var len = pages.length;
+        if (!len) return;
+        i = (n + len) % len;
+        pages.forEach(function (p, j) {
+          p.classList.toggle("is-active", j === i);
+          p.setAttribute("aria-hidden", j === i ? "false" : "true");
+        });
+        dots.forEach(function (d, j) {
+          d.classList.toggle("is-active", j === i);
+          d.setAttribute("aria-current", j === i ? "true" : "false");
+        });
+      }
+      pages.forEach(function (p, j) {
+        p.setAttribute("aria-hidden", j === 0 ? "false" : "true");
+      });
+      if (prev) prev.addEventListener("click", function () { show(i - 1); });
+      if (next) next.addEventListener("click", function () { show(i + 1); });
+      dots.forEach(function (d) {
+        d.addEventListener("click", function () {
+          var t = d.getAttribute("data-page-to");
+          if (t != null) show(parseInt(t, 10));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

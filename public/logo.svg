@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 100" role="img" aria-label="Hustle Property">
+  <rect width="360" height="100" fill="#ffffff"/>
+  <!-- Simple industrial building + eagle silhouette hint -->
+  <path fill="#003366" d="M24 68V32h18l6-8 6 8h10v36H24zm52 0V40h32v28H76zm40-28h36v28h-36V40zm-40-8h12v8H76v-8zm52 36h52V36h-52v32zm16-20h20v8h-20v-8zm0 12h20v8h-20v-8z"/>
+  <path fill="#f58220" d="M168 52h52v16h-52V52zm12 4h12v8h-12v-8zm20 0h12v8h-12v-8z"/>
+  <text x="232" y="44" font-family="system-ui,Segoe UI,sans-serif" font-size="20" font-weight="700" fill="#003366">HUSTLE</text>
+  <text x="232" y="66" font-family="system-ui,Segoe UI,sans-serif" font-size="20" font-weight="700" fill="#003366">PROPERTY</text>
+  <text x="232" y="82" font-family="system-ui,Segoe UI,sans-serif" font-size="9" font-weight="600" fill="#f58220">INDUSTRIAL PROPERTY BROKERS</text>
+</svg>

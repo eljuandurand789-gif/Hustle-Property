@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact us | Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--contact">
+
+  <header class="property-public-hero property-public-hero--contact">
+    <a href="/" class="property-public-hero__back">← Back to listings</a>
+    <div class="property-public-hero__brand">
+      <div class="property-public-logo-panel">
+        <a href="/" class="property-public-logo-link" aria-label="Hustle Property — home">
+          <img src="/logo.png" alt="Hustle Property" class="property-public-logo" width="200" height="auto" decoding="async">
+        </a>
+      </div>
+      <p class="property-public-hero__subtitle">Contact us</p>
+    </div>
+  </header>
+
+  <main class="content-wrap contact-page-main">
+    <% if (enquirySent) { %>
+      <div class="admin-flash admin-flash--success" role="status">Thanks — your message was sent.</div>
+    <% } %>
+    <% if (enquiryError) { %>
+      <div class="admin-flash" role="alert" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">Please enter your name and phone number.</div>
+    <% } %>
+
+    <section class="form-card contact-page-card contact-page-card--top contact-page-card--hero" id="contact-details">
+      <div class="contact-hero-split">
+        <div class="contact-hero-split__copy">
+          <h1>Get in touch</h1>
+          <p class="contact-page-lead contact-page-lead--muted">
+            Name and phone are required below. Email and message are optional. Enquiries also appear in the admin <strong>Notifications</strong> area.
+          </p>
+
+          <ul class="contact-social-block" aria-label="Chat, email, and social">
+        <li>
+          <a href="https://wa.me/27826053539" class="contact-social-block__link contact-social-block__link--whatsapp" target="_blank" rel="noopener noreferrer">
+            <span class="contact-social-block__icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.881 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></span>
+            WhatsApp — start a chat (+27 82 605 3539)
+          </a>
+        </li>
+        <li>
+          <a href="mailto:ejdurand@anvilproperty.co.za" class="contact-social-block__link contact-social-block__link--email">
+            <span class="contact-social-block__icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4z"/><path d="M4 8l8 6 8-6"/></svg></span>
+            Email — ejdurand@anvilproperty.co.za
+          </a>
+        </li>
+        <li>
+          <a href="https://www.instagram.com/ejthepropertydude/" class="contact-social-block__link contact-social-block__link--instagram" target="_blank" rel="noopener noreferrer">
+            <span class="contact-social-block__icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg></span>
+            Follow me on INSTAGRAM — @ejthepropertydude
+          </a>
+        </li>
+        <li>
+          <a href="https://www.linkedin.com/in/eljuandurand/" class="contact-social-block__link contact-social-block__link--linkedin" target="_blank" rel="noopener noreferrer">
+            <span class="contact-social-block__icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></span>
+            Connect with me on LinkedIn
+          </a>
+        </li>
+      </ul>
+        </div>
+
+        <div class="contact-hero-split__mascot">
+          <div class="contact-mascot contact-mascot--eagle-logo" aria-hidden="true">
+            <div class="contact-mascot__logo-wrap">
+              <div class="contact-mascot__pulse" aria-hidden="true">
+                <span class="contact-mascot__ring"></span>
+                <span class="contact-mascot__ring contact-mascot__ring--d2"></span>
+                <span class="contact-mascot__ring contact-mascot__ring--d3"></span>
+              </div>
+              <img
+                src="/logo.png"
+                alt=""
+                class="contact-mascot__eagle-logo"
+                width="220"
+                height="auto"
+                decoding="async"
+              >
+            </div>
+          </div>
+          <p class="contact-mascot__caption">Hustle Property</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="form-card contact-page-card contact-page-card--form">
+      <h2 class="contact-form-heading">Send a message</h2>
+      <form method="POST" action="/contact" class="property-enquiry-form">
+        <div class="form-group">
+          <label for="c-name">Your name</label>
+          <input id="c-name" name="name" type="text" required autocomplete="name" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label for="c-phone">Phone</label>
+          <input id="c-phone" name="phone" type="tel" required autocomplete="tel" placeholder="Phone number">
+        </div>
+        <div class="form-group">
+          <label for="c-email">Email (optional)</label>
+          <input id="c-email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label for="c-message">Message (optional)</label>
+          <textarea id="c-message" name="message" rows="4" placeholder="How can we help?"></textarea>
+        </div>
+        <button type="submit" class="primary-btn">Send message</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      document.addEventListener("keydown", function (e) {
+        if (e.ctrlKey && e.shiftKey && (e.key === "a" || e.key === "A")) {
+          e.preventDefault();
+          window.location.href = "/admin/login";
+        }
+      });
+    })();
+  </script>
+
+</body>
+</html>

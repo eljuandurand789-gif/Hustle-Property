@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= building.name %> | Hustle Property</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg">
+
+  <header class="front-header">
+    <div class="header-top-actions">
+      <a href="/" class="header-pill-btn">All listings</a>
+      <a href="/admin/login" class="header-pill-btn">Admin</a>
+    </div>
+    <div class="front-header-inner">
+      <a href="/" class="front-banner-logo-link" aria-label="Hustle Property — home">
+        <img src="/logo.png" alt="Hustle Property" class="front-banner-logo" decoding="async">
+      </a>
+    </div>
+  </header>
+
+  <main class="content-wrap building-public-main">
+    <section class="form-card building-hero-card">
+      <p class="building-kicker">Industrial park / building</p>
+      <h1 class="building-public-title"><%= building.name %></h1>
+      <% if (building.size_text) { %>
+        <p class="building-size-line"><strong>Site:</strong> <%= building.size_text %></p>
+      <% } %>
+    </section>
+
+    <% 
+      const heroImages = [];
+      if (building.display_image) heroImages.push(building.display_image);
+      if (building.images && building.images.length) {
+        building.images.forEach(img => { if (!heroImages.includes(img.filename)) heroImages.push(img.filename); });
+      }
+    %>
+
+    <% if (heroImages.length) { %>
+      <section class="building-gallery-section">
+        <div class="building-hero-grid">
+          <% heroImages.slice(0, 4).forEach((fn, i) => { %>
+            <div class="building-hero-cell <%= i === 0 ? 'building-hero-cell--large' : '' %>">
+              <img src="/uploads/<%= fn %>" alt="<%= building.name %>">
+            </div>
+          <% }) %>
+        </div>
+      </section>
+    <% } %>
+
+    <section class="details-card building-desc-card">
+      <% if (building.description) { %>
+        <h2>About this park</h2>
+        <p class="building-body-text"><%= building.description %></p>
+      <% } %>
+      <% if (building.features) { %>
+        <h3>Shared features</h3>
+        <p class="building-body-text"><%= building.features %></p>
+      <% } %>
+    </section>
+
+    <section class="form-card building-units-card" id="units">
+      <h2>View units in <%= building.name %></h2>
+      <% if (!units.length) { %>
+        <p class="map-note">No active listings in this park right now.</p>
+      <% } else { %>
+        <ul class="building-units-list">
+          <% units.forEach(u => { %>
+            <li>
+              <a href="/property/<%= u.id %>" class="building-unit-link">
+                <strong><%= u.name %></strong>
+                <span><%= u.size || "—" %> · <%= u.price || "Price on request" %></span>
+              </a>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </section>
+  </main>
+
+</body>
+</html>

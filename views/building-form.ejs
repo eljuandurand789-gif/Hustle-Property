@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= pageTitle %> — Admin</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="page-bg page-bg--admin">
+
+  <%- include('partials/admin-header', { adminHeroTagline: pageTitle, adminNavActive: 'buildings' }) %>
+
+  <main class="content-wrap">
+    <section class="form-card property-form-large">
+      <h2><%= pageTitle %></h2>
+      <p class="deal-form-hint">This information can appear on the public <strong>park / building</strong> page and on linked units when &ldquo;use unit details&rdquo; is turned off.</p>
+
+      <form action="<%= formAction %>" method="POST" enctype="multipart/form-data" class="property-form-grid">
+        <div class="form-group full-width">
+          <label>Building or park name</label>
+          <input type="text" name="name" required value="<%= building ? building.name : '' %>" placeholder="e.g. Northgate Industrial Park">
+        </div>
+
+        <div class="form-group full-width">
+          <label>Size / site details (park-wide)</label>
+          <input type="text" name="size_text" value="<%= building ? building.size_text : '' %>" placeholder="e.g. 12 ha, multiple warehouses">
+        </div>
+
+        <div class="form-group full-width">
+          <label>Building description</label>
+          <textarea name="description" rows="5" placeholder="Overview of the park, access, security…"><%= building ? building.description : '' %></textarea>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Shared features (park-wide)</label>
+          <textarea name="features" rows="4" placeholder="Shared yard, 24h security, truck access…"><%= building ? building.features : '' %></textarea>
+        </div>
+
+        <div class="form-group full-width cover-image-block">
+          <label>Cover image (hero for park page)</label>
+          <p class="cover-drop-hint">Drag an image here or click the frame.</p>
+          <div id="cover-drop-zone" class="cover-drop-zone <%= building && building.display_image ? 'has-image' : '' %>">
+            <input type="file" id="cover-file-input" name="displayImage" accept="image/*" class="cover-file-input-hidden">
+            <div id="cover-drop-placeholder" class="cover-drop-placeholder">Drop cover image<br><span>or click to browse</span></div>
+            <img id="cover-preview-main" class="cover-preview-main" alt="" style="display:none;">
+          </div>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Additional gallery images</label>
+          <input type="file" name="images" accept="image/*" multiple>
+
+          <% if (building && building.images && building.images.length) { %>
+            <p class="image-sort-hint">Existing images (add more above):</p>
+            <div class="image-order-grid">
+              <% building.images.forEach(image => { %>
+                <div class="image-order-card">
+                  <img src="/uploads/<%= image.filename %>" alt="" class="image-order-preview">
+                </div>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+
+        <div class="full-width form-submit-row">
+          <button type="submit" class="primary-btn large-save-btn">Save building</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      var zone = document.getElementById("cover-drop-zone");
+      var input = document.getElementById("cover-file-input");
+      var img = document.getElementById("cover-preview-main");
+      var ph = document.getElementById("cover-drop-placeholder");
+      if (!zone || !input || !img || !ph) return;
+
+      function showFile(f) {
+        if (!f || !f.type.match(/^image\//)) return;
+        img.src = URL.createObjectURL(f);
+        img.style.display = "block";
+        ph.style.display = "none";
+        zone.classList.add("has-image");
+      }
+
+      <% if (building && building.display_image) { %>
+      img.src = "/uploads/<%= building.display_image %>";
+      img.style.display = "block";
+      ph.style.display = "none";
+      zone.classList.add("has-image");
+      <% } %>
+
+      zone.addEventListener("click", function (e) {
+        if (e.target !== input) input.click();
+      });
+      input.addEventListener("change", function () {
+        if (input.files && input.files[0]) showFile(input.files[0]);
+      });
+      ["dragenter", "dragover"].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          zone.classList.add("cover-drop-zone--drag");
+        });
+      });
+      ["dragleave", "drop"].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          zone.classList.remove("cover-drop-zone--drag");
+        });
+      });
+      zone.addEventListener("drop", function (e) {
+        var f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        var dt = new DataTransfer();
+        dt.items.add(f);
+        input.files = dt.files;
+        showFile(f);
+      });
+    })();
+  </script>
+
+</body>
+</html>
