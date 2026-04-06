@@ -4,3 +4,7 @@ node_modules/
 .vercel
 *.log
 .DS_Store
+
+# User media (large — GitHub max 100 MB per file; keep local / use cloud storage)
+uploads/*.mp4
+uploads/**/*.mp4
