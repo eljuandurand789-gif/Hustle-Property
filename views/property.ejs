@@ -38,11 +38,17 @@
       </section>
     <% } %>
 
-    <div class="property-detail-layout">
+    <%
+      const allImages = property.galleryFilenames && property.galleryFilenames.length ? property.galleryFilenames : [];
+      const hasGalleryPhotos = allImages.length > 0;
+      const hasListingVideo = !!(property.video_filename && String(property.video_filename).trim());
+      const hasHeroColumn = hasGalleryPhotos || hasListingVideo;
+    %>
+    <div class="property-detail-layout<%= hasHeroColumn ? " property-detail-layout--hero" : " property-detail-layout--stack" %>">
+      <% if (hasHeroColumn) { %>
+      <div class="property-left-stack<%= hasListingVideo ? " property-left-stack--with-video" : "" %>">
       <div class="property-media-col">
-        <% const allImages = property.galleryFilenames && property.galleryFilenames.length ? property.galleryFilenames : []; %>
-
-        <% if (allImages.length > 0) { %>
+        <% if (hasGalleryPhotos) { %>
           <div class="property-slider-wrap">
             <button type="button" onclick="changeSlide(-1)" class="slider-arrow left-arrow">‹</button>
 
@@ -157,11 +163,9 @@
               });
             })();
           </script>
-        <% } else { %>
-          <div class="main-no-image">No Image</div>
         <% } %>
 
-        <% if (property.video_filename) { %>
+        <% if (hasListingVideo) { %>
           <div class="property-video-block">
             <h3 class="property-video-heading">Property video</h3>
             <video
@@ -175,46 +179,50 @@
             </video>
           </div>
         <% } %>
-
-        <div class="property-enquiry-row">
-          <section class="property-enquiry-card property-enquiry-card--prominent" id="enquiry">
-            <div class="property-enquiry-card__head">
-              <h3 class="property-enquiry-heading">Enquire about this unit</h3>
-              <% if (areaGuideSlug && areaGuideLabel) { %>
-                <a href="/area/<%= areaGuideSlug %>" class="secondary-btn property-enquiry-area-guide-btn"><%= areaGuideLabel %></a>
-              <% } %>
-            </div>
-            <p class="property-enquiry-intro">
-              We&rsquo;ll notify the office with the <strong>address</strong> and listing below. Name and phone are required; email and message are optional.
-            </p>
-            <p class="property-enquiry-unit-meta">
-              <strong><%= property.name %></strong><br>
-              <% if (property.address) { %><%= property.address %><% } else { %><em>Address on file</em><% } %>
-            </p>
-            <form method="POST" action="/property/<%= property.id %>/enquiry" class="property-enquiry-form property-enquiry-form--grid">
-              <div class="form-group">
-                <label for="enquiry-name">Your name</label>
-                <input id="enquiry-name" name="name" type="text" required autocomplete="name" placeholder="Full name">
-              </div>
-              <div class="form-group">
-                <label for="enquiry-phone">Phone</label>
-                <input id="enquiry-phone" name="phone" type="tel" required autocomplete="tel" placeholder="Phone number">
-              </div>
-              <div class="form-group form-group--full">
-                <label for="enquiry-email">Email (optional)</label>
-                <input id="enquiry-email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
-              </div>
-              <div class="form-group form-group--full">
-                <label for="enquiry-message">Message (optional)</label>
-                <textarea id="enquiry-message" name="message" rows="5" placeholder="Questions or viewing request…"></textarea>
-              </div>
-              <div class="form-group form-group--full form-group--enquiry-actions">
-                <button type="submit" class="primary-btn property-enquiry-submit">Send enquiry</button>
-              </div>
-            </form>
-          </section>
-        </div>
       </div>
+      <div class="property-enquiry-row">
+        <section class="property-enquiry-card property-enquiry-card--prominent" id="enquiry">
+          <div class="property-enquiry-card__head">
+            <h3 class="property-enquiry-heading">Enquire about this unit</h3>
+            <% if (typeof areaGuideSlug !== "undefined" && typeof areaGuideLabel !== "undefined" && areaGuideSlug && areaGuideLabel) { %>
+              <a href="/area/<%= areaGuideSlug %>" class="secondary-btn property-enquiry-area-guide-btn"><%= areaGuideLabel %></a>
+            <% } %>
+          </div>
+          <p class="property-enquiry-intro">
+            We&rsquo;ll notify the office with the <strong>address</strong> and listing below. Name and phone are required; email and message are optional.
+          </p>
+          <p class="property-enquiry-unit-meta">
+            <strong><%= property.name %></strong><br>
+            <% if (property.address) { %><%= property.address %><% } else { %><em>Address on file</em><% } %>
+          </p>
+          <p class="property-enquiry-direct">
+            <a href="/contact" class="secondary-btn property-enquiry-direct-btn">Contact us directly</a>
+          </p>
+          <form method="POST" action="/property/<%= property.id %>/enquiry" class="property-enquiry-form property-enquiry-form--grid">
+            <div class="form-group">
+              <label for="enquiry-name">Your name</label>
+              <input id="enquiry-name" name="name" type="text" required autocomplete="name" placeholder="Full name">
+            </div>
+            <div class="form-group">
+              <label for="enquiry-phone">Phone</label>
+              <input id="enquiry-phone" name="phone" type="tel" required autocomplete="tel" placeholder="Phone number">
+            </div>
+            <div class="form-group form-group--full">
+              <label for="enquiry-email">Email (optional)</label>
+              <input id="enquiry-email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+            </div>
+            <div class="form-group form-group--full">
+              <label for="enquiry-message">Message (optional)</label>
+              <textarea id="enquiry-message" name="message" rows="5" placeholder="Questions or viewing request…"></textarea>
+            </div>
+            <div class="form-group form-group--full form-group--enquiry-actions">
+              <button type="submit" class="primary-btn property-enquiry-submit">Send enquiry</button>
+            </div>
+          </form>
+        </section>
+      </div>
+      </div>
+      <% } %>
 
       <% const stRaw = String(property.status || "").toLowerCase(); %>
       <% const priceLabel = (stRaw === "for-sale" || stRaw === "sold") ? "Asking price" : (stRaw === "to-let" || stRaw === "let") ? "Rental" : "Listing price"; %>
@@ -333,56 +341,89 @@
           </div>
         <% } %>
 
-      </div>
-    </div>
-
-    <% if (hasMapCoords) { %>
-      <section class="property-maps-section" aria-label="Location maps">
-        <h2 class="property-maps-title">Location</h2>
-        <% if (googleMapsKey) { %>
-          <div class="property-maps-grid">
-            <div class="property-map-frame-wrap">
-              <p class="property-map-label">Satellite</p>
+        <% if (hasMapCoords) { %>
+        <section class="property-details-location" aria-label="Location map">
+          <h3 class="property-details-location__title">Location</h3>
+          <% if (googleMapsKey) { %>
+            <div class="property-details-location__frame">
               <iframe
-                class="property-map-iframe"
+                class="property-map-iframe property-map-iframe--in-details"
                 title="Satellite map"
                 loading="lazy"
                 referrerpolicy="no-referrer-when-downgrade"
                 src="https://www.google.com/maps/embed/v1/view?key=<%= googleMapsKey %>&center=<%= mapLat %>,<%= mapLng %>&zoom=18&maptype=satellite"
               ></iframe>
             </div>
-            <div class="property-map-frame-wrap">
-              <p class="property-map-label">Street View</p>
+            <p class="property-details-location__note">
+              <a href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=<%= mapLat %>,<%= mapLng %>" target="_blank" rel="noopener noreferrer">Open Street View</a>
+              ·
+              <a href="https://www.google.com/maps/search/?api=1&query=<%= mapLat %>,<%= mapLng %>" target="_blank" rel="noopener noreferrer">Google Maps</a>
+            </p>
+          <% } else { %>
+            <div class="property-details-location__frame">
               <iframe
-                class="property-map-iframe"
-                title="Street View"
+                class="property-map-iframe property-map-iframe--in-details"
+                title="Map"
                 loading="lazy"
                 referrerpolicy="no-referrer-when-downgrade"
-                src="https://www.google.com/maps/embed/v1/streetview?key=<%= googleMapsKey %>&location=<%= mapLat %>,<%= mapLng %>&heading=210&pitch=10&fov=80"
+                src="https://maps.google.com/maps?q=<%= mapLat %>,<%= mapLng %>&z=18&output=embed"
               ></iframe>
             </div>
-          </div>
-          <p class="property-map-api-note">Maps use your server&rsquo;s <code>GOOGLE_MAPS_API_KEY</code> (restrict by HTTP referrer in Google Cloud).</p>
-        <% } else { %>
-          <div class="property-maps-fallback">
-            <iframe
-              class="property-map-iframe property-map-iframe--single"
-              title="Map"
-              loading="lazy"
-              referrerpolicy="no-referrer-when-downgrade"
-              src="https://maps.google.com/maps?q=<%= mapLat %>,<%= mapLng %>&z=18&output=embed"
-            ></iframe>
-            <div class="property-map-links">
-              <a class="secondary-btn" href="https://www.google.com/maps/@<%= mapLat %>,<%= mapLng %>,18z/data=!3m1!1e3" target="_blank" rel="noopener noreferrer">Satellite in Google Maps</a>
-              <a class="secondary-btn" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=<%= mapLat %>,<%= mapLng %>" target="_blank" rel="noopener noreferrer">Street View in Google Maps</a>
+            <div class="property-details-location__links">
+              <a class="secondary-btn" href="https://www.google.com/maps/@<%= mapLat %>,<%= mapLng %>,18z/data=!3m1!1e3" target="_blank" rel="noopener noreferrer">Satellite</a>
+              <a class="secondary-btn" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=<%= mapLat %>,<%= mapLng %>" target="_blank" rel="noopener noreferrer">Street View</a>
             </div>
-            <p class="property-map-api-note">
-              For embedded satellite and Street View here, set <code>GOOGLE_MAPS_API_KEY</code> on the server (same key as geocoding works with Maps Embed API enabled).
-            </p>
-          </div>
+            <p class="property-details-location__hint">Uses the Google Maps viewer. Set <code>GOOGLE_MAPS_API_KEY</code> for satellite embed.</p>
+          <% } %>
+        </section>
         <% } %>
-      </section>
-    <% } %>
+
+      </div>
+
+      <% if (!hasHeroColumn) { %>
+      <div class="property-enquiry-row property-enquiry-row--in-layout">
+        <section class="property-enquiry-card property-enquiry-card--prominent" id="enquiry">
+          <div class="property-enquiry-card__head">
+            <h3 class="property-enquiry-heading">Enquire about this unit</h3>
+            <% if (typeof areaGuideSlug !== "undefined" && typeof areaGuideLabel !== "undefined" && areaGuideSlug && areaGuideLabel) { %>
+              <a href="/area/<%= areaGuideSlug %>" class="secondary-btn property-enquiry-area-guide-btn"><%= areaGuideLabel %></a>
+            <% } %>
+          </div>
+          <p class="property-enquiry-intro">
+            We&rsquo;ll notify the office with the <strong>address</strong> and listing below. Name and phone are required; email and message are optional.
+          </p>
+          <p class="property-enquiry-unit-meta">
+            <strong><%= property.name %></strong><br>
+            <% if (property.address) { %><%= property.address %><% } else { %><em>Address on file</em><% } %>
+          </p>
+          <p class="property-enquiry-direct">
+            <a href="/contact" class="secondary-btn property-enquiry-direct-btn">Contact us directly</a>
+          </p>
+          <form method="POST" action="/property/<%= property.id %>/enquiry" class="property-enquiry-form property-enquiry-form--grid">
+            <div class="form-group">
+              <label for="enquiry-name">Your name</label>
+              <input id="enquiry-name" name="name" type="text" required autocomplete="name" placeholder="Full name">
+            </div>
+            <div class="form-group">
+              <label for="enquiry-phone">Phone</label>
+              <input id="enquiry-phone" name="phone" type="tel" required autocomplete="tel" placeholder="Phone number">
+            </div>
+            <div class="form-group form-group--full">
+              <label for="enquiry-email">Email (optional)</label>
+              <input id="enquiry-email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+            </div>
+            <div class="form-group form-group--full">
+              <label for="enquiry-message">Message (optional)</label>
+              <textarea id="enquiry-message" name="message" rows="5" placeholder="Questions or viewing request…"></textarea>
+            </div>
+            <div class="form-group form-group--full form-group--enquiry-actions">
+              <button type="submit" class="primary-btn property-enquiry-submit">Send enquiry</button>
+            </div>
+          </form>
+        </section>
+      </div>
+      <% } %>
+    </div>
 
     <% if (similarProperties && similarProperties.length > 0) { %>
       <section class="similar-listings-section" aria-label="Similar listings">

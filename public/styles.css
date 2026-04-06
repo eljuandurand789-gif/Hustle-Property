@@ -1697,6 +1697,55 @@ textarea {
   gap: 20px;
 }
 
+/* No gallery and no video: don't reserve an empty left column on desktop */
+.property-detail-layout--stack {
+  grid-template-columns: 1fr;
+}
+
+.property-detail-layout--stack .property-details-card,
+.property-detail-layout--stack .property-enquiry-row--in-layout {
+  grid-column: 1;
+}
+
+/* Hero (gallery/video): left column stacks media + enquiry; right is details + map — bottoms align */
+.property-detail-layout--hero {
+  align-items: stretch;
+}
+
+.property-detail-layout--hero > .property-left-stack {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.property-detail-layout--hero > .property-left-stack:not(.property-left-stack--with-video) {
+  align-self: start;
+}
+
+.property-detail-layout--hero > .property-details-card {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.property-left-stack .property-media-col {
+  flex-shrink: 0;
+}
+
+/* Snug enquiry under gallery when there is no video */
+.property-left-stack .property-enquiry-row {
+  margin-top: 22px;
+  flex-shrink: 0;
+}
+
+/* With video: pin enquiry to bottom so it lines up with the details column */
+.property-left-stack--with-video .property-enquiry-row {
+  margin-top: auto;
+}
+
 .property-video-block {
   margin-top: 20px;
   max-width: 100%;
@@ -2045,22 +2094,6 @@ textarea {
 .page-bg--agent-zone .agent-zone-main--shell {
   position: relative;
   z-index: 2;
-}
-
-.admin-nav-pill--listings {
-  border-color: rgba(37, 99, 235, 0.35);
-  background: linear-gradient(180deg, #eff6ff 0%, #fff 100%);
-}
-
-.admin-nav-pill--listings:hover {
-  border-color: rgba(245, 130, 32, 0.65);
-}
-
-.admin-nav-pill--listings-active {
-  border-color: rgba(245, 130, 32, 0.88);
-  box-shadow:
-    0 0 0 2px rgba(245, 130, 32, 0.28),
-    0 6px 22px rgba(0, 20, 50, 0.22);
 }
 
 .page-bg--agent-zone .form-card {
@@ -4273,6 +4306,22 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .property-detail-layout--hero .property-left-stack {
+    display: contents;
+  }
+
+  .property-detail-layout--hero .property-media-col {
+    order: 1;
+  }
+
+  .property-detail-layout--hero .property-details-card {
+    order: 2;
+  }
+
+  .property-detail-layout--hero .property-enquiry-row {
+    order: 3;
+  }
+
   .filter-form.home-filter-form .home-filter-form__ranges {
     grid-template-columns: 1fr;
   }
@@ -4877,8 +4926,91 @@ textarea {
   display: block;
 }
 
+.property-detail-layout > .property-enquiry-row--in-layout {
+  grid-column: 1;
+  margin-top: 0;
+}
+
+/* Location map below description / bio in details column */
+.property-details-location {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(74, 111, 165, 0.2);
+  min-width: 0;
+  border-radius: 0 0 12px 12px;
+}
+
+.property-details-location__title {
+  margin: 0 0 12px 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--brand-navy);
+}
+
+.property-details-location__frame {
+  line-height: 0;
+  background: #0f172a;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.property-map-iframe--in-details {
+  display: block;
+  width: 100%;
+  min-height: 240px;
+  height: min(38vh, 360px);
+  max-height: 420px;
+  border: none;
+  border-radius: 0;
+}
+
+.property-details-location__note,
+.property-details-location__hint {
+  font-size: 12px;
+  color: var(--ocean-800);
+  margin: 10px 0 0 0;
+  line-height: 1.45;
+}
+
+.property-details-location__note a,
+.property-details-location__hint a {
+  color: var(--brand-navy);
+  font-weight: 600;
+}
+
+.property-details-location__hint code {
+  font-size: 11px;
+}
+
+.property-details-location__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.property-details-location__links .secondary-btn {
+  font-size: 12px;
+  padding: 8px 14px;
+}
+
 .property-enquiry-row .property-enquiry-card {
   margin-top: 0;
+}
+
+.property-enquiry-direct {
+  margin: 0 0 16px 0;
+}
+
+.property-enquiry-direct-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 320px;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 .property-enquiry-card {
@@ -6341,6 +6473,123 @@ textarea {
 .home-contact-social__contact-link {
   font-weight: 700;
   color: var(--brand-navy);
+}
+
+.home-footer-faq {
+  margin: 12px 0 0 0;
+  text-align: center;
+}
+
+.home-footer-faq__link {
+  font-size: 12px;
+  color: var(--ocean-800);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.home-footer-faq__link:hover {
+  color: var(--brand-navy);
+  text-decoration: underline;
+}
+
+.page-bg--faq {
+  background: var(--page-bg);
+}
+
+.faq-page-main {
+  padding-bottom: 48px;
+}
+
+.faq-page-card {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.faq-page__title {
+  margin: 0 0 8px 0;
+  font-size: 1.5rem;
+  color: var(--brand-navy);
+}
+
+.faq-page__lead {
+  margin: 0 0 24px 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ocean-800);
+}
+
+.faq-page__lead a {
+  color: var(--brand-navy);
+  font-weight: 700;
+}
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq-item:first-of-type {
+  border-top: 1px solid var(--border);
+}
+
+.faq-item__q {
+  cursor: pointer;
+  list-style: none;
+  padding: 16px 8px 16px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand-navy);
+  position: relative;
+  padding-right: 28px;
+  border-radius: 6px;
+}
+
+.faq-item__q:focus-visible {
+  outline: 2px solid var(--brand-orange);
+  outline-offset: 2px;
+}
+
+.faq-item__q::-webkit-details-marker {
+  display: none;
+}
+
+.faq-item__q::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--brand-navy);
+  border-bottom: 2px solid var(--brand-navy);
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.faq-item[open] .faq-item__q::after {
+  transform: translateY(-30%) rotate(-135deg);
+}
+
+.faq-item__a {
+  padding: 0 8px 18px 0;
+}
+
+.faq-item__a p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ocean-800);
+}
+
+.faq-item__a a {
+  color: var(--brand-navy);
+  font-weight: 600;
 }
 
 .home-modal__footer {

@@ -8,6 +8,9 @@ const fs = require("fs");
 const Database = require("better-sqlite3");
 
 const app = express();
+if (process.env.VERCEL) {
+  app.set("trust proxy", 1);
+}
 const PORT = Number(process.env.PORT) || 3000;
 /** Listen on all interfaces so phones/tablets on the same Wi‑Fi can connect. Override with HOST=127.0.0.1 for local-only. */
 const HOST = process.env.HOST || "0.0.0.0";
@@ -310,6 +313,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
+      secure: Boolean(process.env.VERCEL),
       maxAge: 7 * 24 * 60 * 60 * 1000
     }
   })
@@ -1077,6 +1081,30 @@ function formatClosedMonthYearFromIso(iso) {
   return d.toLocaleDateString("en-ZA", { month: "long", year: "numeric" });
 }
 
+/** YYYY-MM-DD for local calendar today (done-deals copy: future close → "Closed for …"). */
+function todayIsoDateLocal() {
+  const n = new Date();
+  const y = n.getFullYear();
+  const m = String(n.getMonth() + 1).padStart(2, "0");
+  const day = String(n.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Suffix after "Closed " on done-deals cards: month–year, or "for June 2026" when the reporting date is still ahead.
+ */
+function formatDoneDealClosedSuffix(iso) {
+  if (!iso || String(iso).length < 10) return "";
+  const d = new Date(`${String(iso).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  const dealDay = String(iso).slice(0, 10);
+  const monthYear = formatClosedMonthYearFromIso(iso);
+  if (dealDay > todayIsoDateLocal()) {
+    return monthYear ? `for ${monthYear}` : "";
+  }
+  return monthYear;
+}
+
 /** Sum of lease term months where start/end or derived term exist. */
 function leaseMonthsSignedForDeal(d) {
   const start = String(d.lease_commencement_date || d.lease_start_date || "")
@@ -1184,7 +1212,7 @@ function getDoneDealsPublicStats() {
       rateLine = `R${Math.round(rpsqm).toLocaleString("en-ZA")}/m² achieved`;
     }
 
-    const closedLabel = formatClosedMonthYearFromIso(iso);
+    const closedLabel = formatDoneDealClosedSuffix(iso);
 
     showcaseRaw.push({
       area,
@@ -2459,6 +2487,10 @@ app.get("/done-deals", (req, res) => {
     console.error("done-deals:", e);
     res.status(500).type("html").send("<p>Page could not be loaded. Try again shortly.</p>");
   }
+});
+
+app.get("/faq", (req, res) => {
+  res.render("faq");
 });
 
 app.get("/contact", (req, res) => {
@@ -3969,39 +4001,43 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-const server = http.createServer(app);
+module.exports = app;
 
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(
-      `\n[ERROR] Port ${PORT} is already in use.\n` +
-        `Stop the other Node process (close other terminals running the server, or Task Manager → end "Node.js JavaScript Runtime"), then run npm start again.\n`
-    );
-  } else {
-    console.error("HTTP server error:", err);
-  }
-  process.exit(1);
-});
+if (require.main === module) {
+  const server = http.createServer(app);
 
-server.listen(PORT, HOST, () => {
-  console.log(`Server running on http://127.0.0.1:${PORT}`);
-  console.log(`Health check: http://127.0.0.1:${PORT}/health`);
-  if (HOST === "0.0.0.0") {
-    const addrs = lanIPv4Addresses();
-    if (addrs.length) {
-      console.log("\nSame network (phone / other devices):");
-      addrs.forEach((a) => {
-        console.log(`  http://${a}:${PORT}`);
-      });
-      console.log(
-        `(If it does not load on your phone, allow inbound TCP port ${PORT} in Windows Firewall for Private networks.)`
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(
+        `\n[ERROR] Port ${PORT} is already in use.\n` +
+          `Stop the other Node process (close other terminals running the server, or Task Manager → end "Node.js JavaScript Runtime"), then run npm start again.\n`
       );
     } else {
-      console.log(
-        "\n(No non-loopback IPv4 found — connect via http://127.0.0.1:" +
-          PORT +
-          " or set your Wi‑Fi adapter.)"
-      );
+      console.error("HTTP server error:", err);
     }
-  }
-});
+    process.exit(1);
+  });
+
+  server.listen(PORT, HOST, () => {
+    console.log(`Server running on http://127.0.0.1:${PORT}`);
+    console.log(`Health check: http://127.0.0.1:${PORT}/health`);
+    if (HOST === "0.0.0.0") {
+      const addrs = lanIPv4Addresses();
+      if (addrs.length) {
+        console.log("\nSame network (phone / other devices):");
+        addrs.forEach((a) => {
+          console.log(`  http://${a}:${PORT}`);
+        });
+        console.log(
+          `(If it does not load on your phone, allow inbound TCP port ${PORT} in Windows Firewall for Private networks.)`
+        );
+      } else {
+        console.log(
+          "\n(No non-loopback IPv4 found — connect via http://127.0.0.1:" +
+            PORT +
+            " or set your Wi‑Fi adapter.)"
+        );
+      }
+    }
+  });
+}
