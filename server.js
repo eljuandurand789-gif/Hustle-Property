@@ -3514,6 +3514,13 @@ app.get("/admin", requireLogin, async (req, res, next) => {
   }
 });
 
+// Safety: some cached HTML or mis-posts can hit POST /admin (should be GET).
+// Avoid 404s by redirecting to the correct page.
+app.post("/admin", (req, res) => {
+  if (req.session && req.session.loggedIn) return res.redirect("/admin");
+  return res.redirect("/admin/login");
+});
+
 app.get("/admin/capture-lead", requireLogin, (req, res) => {
   res.render("admin-capture-lead", {
     saved: req.query.saved === "1",
