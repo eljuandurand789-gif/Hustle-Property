@@ -83,6 +83,12 @@ function getMissingColumnFromPgrstMessage(msg) {
   return m ? m[1] : null;
 }
 
+function getMissingColumnFromPg42703Message(msg) {
+  // Example: "column property_images.filename does not exist"
+  const m = String(msg || "").match(/column\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s+does not exist/i);
+  return m ? m[2] : null;
+}
+
 async function insertWithDropUnknownColumns(table, row, returning = "id") {
   // PostgREST throws PGRST204 when a column doesn't exist in the schema cache.
   // This lets migration proceed even if your table is missing some columns.
@@ -97,7 +103,11 @@ async function insertWithDropUnknownColumns(table, row, returning = "id") {
       .single();
     if (!error) return { data, dropped };
     const missing =
-      error.code === "PGRST204" ? getMissingColumnFromPgrstMessage(error.message) : null;
+      error.code === "PGRST204"
+        ? getMissingColumnFromPgrstMessage(error.message)
+        : String(error.code) === "42703"
+          ? getMissingColumnFromPg42703Message(error.message)
+          : null;
     if (missing && Object.prototype.hasOwnProperty.call(payload, missing)) {
       dropped.push(missing);
       delete payload[missing];
@@ -118,7 +128,11 @@ async function updateWithDropUnknownColumns(table, matchCol, matchVal, row) {
     const { error } = await supabase.from(table).update(payload).eq(matchCol, matchVal);
     if (!error) return { dropped };
     const missing =
-      error.code === "PGRST204" ? getMissingColumnFromPgrstMessage(error.message) : null;
+      error.code === "PGRST204"
+        ? getMissingColumnFromPgrstMessage(error.message)
+        : String(error.code) === "42703"
+          ? getMissingColumnFromPg42703Message(error.message)
+          : null;
     if (missing && Object.prototype.hasOwnProperty.call(payload, missing)) {
       dropped.push(missing);
       delete payload[missing];
@@ -251,7 +265,6 @@ async function main() {
       if (!uploaded) continue;
       const imgRow = {
         property_id: newId,
-        filename: uploaded,
         storage_path: uploaded,
         image_order: g.image_order || i + 1
       };

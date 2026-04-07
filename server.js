@@ -483,12 +483,21 @@ function parseYoutubeVideoId(input) {
 
 async function sbListPropertyImages(propertyId) {
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("property_images")
-    .select("id, property_id, filename, storage_path, image_order")
-    .eq("property_id", propertyId)
-    .order("image_order", { ascending: true })
-    .order("id", { ascending: true });
+  async function run(sel) {
+    return await supabase
+      .from("property_images")
+      .select(sel)
+      .eq("property_id", propertyId)
+      .order("image_order", { ascending: true })
+      .order("id", { ascending: true });
+  }
+  // Prefer storage_path-only schema (what you have now). Fallback to filename if needed.
+  let data;
+  let error;
+  ({ data, error } = await run("id, property_id, storage_path, image_order"));
+  if (error && String(error.code) === "42703") {
+    ({ data, error } = await run("id, property_id, filename, image_order"));
+  }
   if (error) throw error;
   return (data || []).map((row) => ({
     ...row,
@@ -596,12 +605,20 @@ async function sbGetPublicProperties(filters = {}) {
   const ids = rows.map((r) => r.id).filter((n) => n != null);
   const imagesByProp = new Map();
   if (ids.length) {
-    const { data: imgs, error: imgErr } = await supabase
-      .from("property_images")
-      .select("property_id, filename, storage_path, image_order, id")
-      .in("property_id", ids)
-      .order("image_order", { ascending: true })
-      .order("id", { ascending: true });
+    async function run(sel) {
+      return await supabase
+        .from("property_images")
+        .select(sel)
+        .in("property_id", ids)
+        .order("image_order", { ascending: true })
+        .order("id", { ascending: true });
+    }
+    let imgs;
+    let imgErr;
+    ({ data: imgs, error: imgErr } = await run("property_id, storage_path, image_order, id"));
+    if (imgErr && String(imgErr.code) === "42703") {
+      ({ data: imgs, error: imgErr } = await run("property_id, filename, image_order, id"));
+    }
     if (imgErr) throw imgErr;
     (imgs || []).forEach((img) => {
       const normalized = { ...img, filename: img.storage_path || img.filename };
@@ -635,12 +652,20 @@ async function sbGetAdminProperties(area = "") {
   const ids = rows.map((r) => r.id).filter((n) => n != null);
   const imagesByProp = new Map();
   if (ids.length) {
-    const { data: imgs, error: imgErr } = await supabase
-      .from("property_images")
-      .select("property_id, filename, storage_path, image_order, id")
-      .in("property_id", ids)
-      .order("image_order", { ascending: true })
-      .order("id", { ascending: true });
+    async function run(sel) {
+      return await supabase
+        .from("property_images")
+        .select(sel)
+        .in("property_id", ids)
+        .order("image_order", { ascending: true })
+        .order("id", { ascending: true });
+    }
+    let imgs;
+    let imgErr;
+    ({ data: imgs, error: imgErr } = await run("property_id, storage_path, image_order, id"));
+    if (imgErr && String(imgErr.code) === "42703") {
+      ({ data: imgs, error: imgErr } = await run("property_id, filename, image_order, id"));
+    }
     if (imgErr) throw imgErr;
     (imgs || []).forEach((img) => {
       const normalized = { ...img, filename: img.storage_path || img.filename };
@@ -3964,7 +3989,6 @@ app.post(
           const { error: imgErr } = await supabase.from("property_images").insert([
             {
               property_id: propertyId,
-              filename: uploadedPath,
               storage_path: uploadedPath,
               image_order: i + 1
             }
@@ -4278,7 +4302,6 @@ app.post(
             const { error: imgErr } = await supabase.from("property_images").insert([
               {
                 property_id: pid,
-                filename: uploadedPath,
                 storage_path: uploadedPath,
                 image_order: currentMax + i + 1
               }
