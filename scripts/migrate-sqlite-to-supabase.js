@@ -201,7 +201,26 @@ async function main() {
 
   console.log(`Found ${props.length} properties in SQLite.`);
 
+  const skipExisting = process.argv.includes("--skip-existing") || true;
+
   for (const p of props) {
+    if (skipExisting) {
+      // Best-effort de-dupe: match by (name, area, address-if-present).
+      let q = supabase.from("properties").select("id").eq("name", p.name).eq("area", p.area);
+      const addr = p.address && String(p.address).trim();
+      if (addr) q = q.eq("address", addr);
+      // eslint-disable-next-line no-await-in-loop
+      const { data: existingRow, error: exErr } = await q.limit(1).maybeSingle();
+      if (exErr && String(exErr.code) !== "42703") {
+        throw exErr;
+      }
+      if (existingRow && existingRow.id) {
+        console.log(`Skip existing property (already in Supabase): SQLite ${p.id} → Supabase ${existingRow.id}`);
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+    }
+
     // Insert property row first (without display_image), then upload and update.
     const insertRow = {
       name: p.name,
