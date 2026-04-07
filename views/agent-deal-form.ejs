@@ -44,7 +44,7 @@
           <label>Agent</label>
           <select name="agent_id" required>
             <% agents.forEach(a => { %>
-              <option value="<%= a.id %>" <%= (deal && deal.agent_id === a.id) || (!deal && selectedAgentId === a.id) ? 'selected' : '' %>>
+              <option value="<%= a.id %>" <%= (deal && Number(deal.agent_id) === Number(a.id)) || (!deal && Number(selectedAgentId) === Number(a.id)) ? 'selected' : '' %>>
                 <%= a.name %>
               </option>
             <% }) %>

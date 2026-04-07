@@ -17,7 +17,7 @@
           <label for="agentId">Agent</label>
           <select name="agentId" id="agentId" class="agent-select">
             <% agents.forEach(a => { %>
-              <option value="<%= a.id %>" <%= selectedAgentId === a.id ? 'selected' : '' %>>
+              <option value="<%= a.id %>" <%= Number(selectedAgentId) === Number(a.id) ? 'selected' : '' %>>
                 <%= a.name %>
               </option>
             <% }) %>

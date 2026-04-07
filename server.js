@@ -638,6 +638,9 @@ async function sbListPropertyImages(propertyId) {
 
 function enrichPropertyForRender(property, images) {
   // Matches existing shape expected by templates, but supports Supabase URLs too.
+  if (!Object.prototype.hasOwnProperty.call(property, "brokerName")) {
+    property.brokerName = null;
+  }
   const imgRows = (images || []).map((img) => {
     const fn = img.filename || img.storage_path || null;
     const url =
@@ -663,6 +666,46 @@ function enrichPropertyForRender(property, images) {
   property.statusLabel = formatStatusLabel(property.status);
   property.propertyTypeLabel = formatPropertyTypeLabel(property.property_type);
   return property;
+}
+
+/** Set property.brokerName for many rows (one agents query). */
+async function sbAttachBrokerNames(propertyRows) {
+  if (!supabase || !propertyRows || !propertyRows.length) return;
+  const idSet = new Set();
+  for (const p of propertyRows) {
+    const bid = p.broker_id != null && p.broker_id !== "" ? Number(p.broker_id) : null;
+    if (bid != null && Number.isFinite(bid) && bid > 0) idSet.add(bid);
+  }
+  const ids = [...idSet];
+  if (!ids.length) {
+    for (const p of propertyRows) {
+      p.brokerName = null;
+    }
+    return;
+  }
+  const { data: agents, error } = await supabase.from("agents").select("id,name").in("id", ids);
+  if (error) throw error;
+  const map = new Map((agents || []).map((a) => [Number(a.id), a.name]));
+  for (const p of propertyRows) {
+    const bid = p.broker_id != null && p.broker_id !== "" ? Number(p.broker_id) : null;
+    p.brokerName =
+      bid != null && Number.isFinite(bid) && bid > 0 && map.has(bid) ? map.get(bid) : null;
+  }
+}
+
+async function sbGetListingBrokers() {
+  const agents = await sbGetAgents();
+  return (agents || []).map((a) => ({ id: Number(a.id), name: String(a.name || "") }));
+}
+
+async function sbParseBrokerId(raw) {
+  if (!supabase) return parseBrokerId(raw);
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const { data, error } = await supabase.from("agents").select("id").eq("id", n).maybeSingle();
+  if (error) throw error;
+  return data && data.id != null ? n : null;
 }
 
 async function sbGetPublicProperties(filters = {}) {
@@ -766,6 +809,7 @@ async function sbGetPublicProperties(filters = {}) {
   }
 
   rows = rows.map((p) => enrichPropertyForRender(p, imagesByProp.get(p.id) || []));
+  await sbAttachBrokerNames(rows);
   const high = shuffleArray(rows.filter((p) => p.priority_group === "high"));
   const medium = shuffleArray(rows.filter((p) => p.priority_group === "medium"));
   const low = shuffleArray(rows.filter((p) => p.priority_group === "low"));
@@ -809,6 +853,7 @@ async function sbGetAdminProperties(area = "") {
     property_type: p.property_type || "industrial"
   }));
   rows = rows.map((p) => enrichPropertyForRender(p, []));
+  await sbAttachBrokerNames(rows);
   // Match existing priority sort
   rows.sort((a, b) => {
     const rank = (x) =>
@@ -3180,6 +3225,7 @@ app.get("/property/:id", async (req, res, next) => {
       if (property) {
         const imgs = await sbListPropertyImages(property.id);
         enrichPropertyForRender(property, imgs);
+        await sbAttachBrokerNames([property]);
       }
     } else {
       property = db.prepare("SELECT * FROM properties WHERE id = ?").get(req.params.id);
@@ -3506,12 +3552,11 @@ app.get("/api/map-properties", (req, res) => {
 });
 
 function getListingBrokers() {
-  if (useSupabase) return [];
   return db.prepare("SELECT id, name FROM agents ORDER BY name ASC").all();
 }
 
 function parseBrokerId(raw) {
-  if (useSupabase) return null;
+  if (!db) return null;
   if (raw === undefined || raw === null || raw === "") return null;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -4069,9 +4114,13 @@ app.post(
 
     if (useSupabase) {
       (async () => {
+        const aid = await sbParseBrokerId(agent_id);
+        if (!aid) {
+          return res.status(400).type("text").send("Invalid agent selected.");
+        }
         const { error } = await supabase.from("deals").insert([
           {
-            agent_id: Number(agent_id),
+            agent_id: aid,
             property_name: property_name || "",
             property_address: property_address || "",
             deal_date: deal_date || "",
@@ -4098,9 +4147,7 @@ app.post(
           deal_date && String(deal_date).trim().length >= 4
             ? String(deal_date).trim().slice(0, 4)
             : String(new Date().getFullYear());
-        res.redirect(
-          `/admin/agent-zone?agentId=${Number(agent_id)}&year=${encodeURIComponent(dealY)}`
-        );
+        res.redirect(`/admin/agent-zone?agentId=${aid}&year=${encodeURIComponent(dealY)}`);
       })().catch((e) => {
         console.error("deal create:", e);
         res.status(500).type("text").send("Could not save deal.");
@@ -4150,46 +4197,62 @@ app.post(
 );
 
 app.get("/admin/agent-zone/deals/:id/edit", requireLogin, (req, res) => {
-  const deal = db.prepare("SELECT * FROM deals WHERE id = ?").get(req.params.id);
-  if (!deal) return res.redirect("/admin/agent-zone");
+  const runDealEditGet = async () => {
+    let deal;
+    if (supabase) {
+      const dealId = Number(req.params.id);
+      const { data, error } = await supabase.from("deals").select("*").eq("id", dealId).maybeSingle();
+      if (error) throw error;
+      deal = data || null;
+    } else {
+      deal = db.prepare("SELECT * FROM deals WHERE id = ?").get(req.params.id);
+    }
+    if (!deal) return res.redirect("/admin/agent-zone");
 
-  deal.actual_rental = parsePriceForForm(deal.actual_rental || "");
+    deal.actual_rental = parsePriceForForm(deal.actual_rental || "");
 
-  const commForTerm =
-    (deal.lease_commencement_date && String(deal.lease_commencement_date).trim()) ||
-    (deal.lease_start_date && String(deal.lease_start_date).trim()) ||
-    "";
-  const term = deriveLeaseTermFromStartEnd(commForTerm, deal.lease_end_date);
-  deal._lease_years = term.years;
-  deal._lease_months = term.months;
+    const commForTerm =
+      (deal.lease_commencement_date && String(deal.lease_commencement_date).trim()) ||
+      (deal.lease_start_date && String(deal.lease_start_date).trim()) ||
+      "";
+    const term = deriveLeaseTermFromStartEnd(commForTerm, deal.lease_end_date);
+    deal._lease_years = term.years;
+    deal._lease_months = term.months;
 
-  if (deal.invoice_total != null && String(deal.invoice_total).trim() !== "") {
-    const invN = Number(deal.invoice_total);
-    if (Number.isFinite(invN)) deal.invoice_total_input = Math.round(invN * 100) / 100;
-  }
+    if (deal.invoice_total != null && String(deal.invoice_total).trim() !== "") {
+      const invN = Number(deal.invoice_total);
+      if (Number.isFinite(invN)) deal.invoice_total_input = Math.round(invN * 100) / 100;
+    }
 
-  const agents = getAgents();
-  const yq = (req.query.year || "").trim();
-  const anchorY =
-    (deal.lease_commencement_date && String(deal.lease_commencement_date).trim()) ||
-    (deal.lease_start_date && String(deal.lease_start_date).trim()) ||
-    (deal.deal_date && String(deal.deal_date).trim()) ||
-    (deal.beneficial_occupation_date && String(deal.beneficial_occupation_date).trim()) ||
-    "";
-  const filterYear =
-    yq && /^\d{4}$/.test(yq)
-      ? yq
-      : anchorY.length >= 4
-        ? anchorY.slice(0, 4)
-        : String(new Date().getFullYear());
-  res.render("agent-deal-form", {
-    pageTitle: "Edit Deal",
-    formAction: `/admin/agent-zone/deals/${deal.id}/edit`,
-    agents,
-    deal,
-    selectedAgentId: deal.agent_id,
-    dealPrefillList: getPropertiesForDealPrefill(),
-    filterYear
+    const agents = supabase ? await sbGetAgents() : getAgents();
+    const yq = (req.query.year || "").trim();
+    const anchorY =
+      (deal.lease_commencement_date && String(deal.lease_commencement_date).trim()) ||
+      (deal.lease_start_date && String(deal.lease_start_date).trim()) ||
+      (deal.deal_date && String(deal.deal_date).trim()) ||
+      (deal.beneficial_occupation_date && String(deal.beneficial_occupation_date).trim()) ||
+      "";
+    const filterYear =
+      yq && /^\d{4}$/.test(yq)
+        ? yq
+        : anchorY.length >= 4
+          ? anchorY.slice(0, 4)
+          : String(new Date().getFullYear());
+    res.render("agent-deal-form", {
+      pageTitle: "Edit Deal",
+      formAction: `/admin/agent-zone/deals/${deal.id}/edit`,
+      agents,
+      deal,
+      selectedAgentId: Number(deal.agent_id),
+      dealPrefillList: supabase
+        ? await sbGetPropertiesForDealPrefill()
+        : getPropertiesForDealPrefill(),
+      filterYear
+    });
+  };
+  runDealEditGet().catch((e) => {
+    console.error("deal edit get:", e);
+    res.status(500).type("text").send("Could not load deal.");
   });
 });
 
@@ -4197,54 +4260,106 @@ app.post(
   "/admin/agent-zone/deals/:id/edit",
   requireLogin,
   (req, res) => {
-    const deal = db.prepare("SELECT * FROM deals WHERE id = ?").get(req.params.id);
-    if (!deal) return res.redirect("/admin/agent-zone");
+    const runDealEditPost = async () => {
+      const {
+        agent_id,
+        property_name,
+        property_address,
+        lease_period: leasePeriodLegacy,
+        link_url,
+        actual_rental,
+        agent_share_percent,
+        notes,
+        beneficial_occupation_date,
+        lease_commencement_date,
+        is_expected,
+        show_on_done_deals
+      } = req.body;
 
-    const {
-      agent_id,
-      property_name,
-      property_address,
-      lease_period: leasePeriodLegacy,
-      link_url,
-      actual_rental,
-      agent_share_percent,
-      notes,
-      beneficial_occupation_date,
-      lease_commencement_date,
-      is_expected,
-      show_on_done_deals
-    } = req.body;
+      const isExpected = is_expected === "1" || is_expected === 1 ? 1 : 0;
+      const showOnDoneDeals =
+        show_on_done_deals === "1" || show_on_done_deals === 1 ? 1 : 0;
 
-    const isExpected = is_expected === "1" || is_expected === 1 ? 1 : 0;
-    const showOnDoneDeals =
-      show_on_done_deals === "1" || show_on_done_deals === 1 ? 1 : 0;
+      const deal_date = resolveDealDateForStorage(req.body);
+      const lease_start =
+        lease_commencement_date && String(lease_commencement_date).trim().slice(0, 10);
+      const benStored =
+        beneficial_occupation_date &&
+        String(beneficial_occupation_date).trim().slice(0, 10);
+      const commStored = lease_start || null;
 
-    const deal_date = resolveDealDateForStorage(req.body);
-    const lease_start =
-      lease_commencement_date && String(lease_commencement_date).trim().slice(0, 10);
-    const benStored =
-      beneficial_occupation_date &&
-      String(beneficial_occupation_date).trim().slice(0, 10);
-    const commStored = lease_start || null;
+      const askingFmt = "";
+      const actualFmt = formatPriceForSave(actual_rental || "");
+      const { invoiceTotal: inv, dealAmountType } = resolveDealInvoiceTotal(req.body);
+      const share =
+        agent_share_percent === "" || agent_share_percent == null
+          ? 50
+          : Number(agent_share_percent);
 
-    const lease_end = resolveLeaseEndDate(req.body, deal.lease_end_date);
-    const lease_period =
-      buildLeasePeriodText(req.body, lease_end) ||
-      (leasePeriodLegacy && String(leasePeriodLegacy).trim()) ||
-      "";
+      if (supabase) {
+        const dealId = Number(req.params.id);
+        const { data: deal, error: dErr } = await supabase
+          .from("deals")
+          .select("*")
+          .eq("id", dealId)
+          .maybeSingle();
+        if (dErr) throw dErr;
+        if (!deal) return res.redirect("/admin/agent-zone");
 
-    const { invoiceTotal: inv, dealAmountType } = resolveDealInvoiceTotal(req.body);
-    const share =
-      agent_share_percent === "" || agent_share_percent == null
-        ? 50
-        : Number(agent_share_percent);
+        const lease_end = resolveLeaseEndDate(req.body, deal.lease_end_date);
+        const lease_period =
+          buildLeasePeriodText(req.body, lease_end) ||
+          (leasePeriodLegacy && String(leasePeriodLegacy).trim()) ||
+          "";
+        const dealImage = deal.deal_image;
 
-    const dealImage = deal.deal_image;
+        const parsedAgent = await sbParseBrokerId(agent_id);
+        const agentIdToSave =
+          parsedAgent != null ? parsedAgent : Number(deal.agent_id);
+        await sbUpdateWithDropUnknownColumns("deals", "id", dealId, {
+          agent_id: agentIdToSave,
+          property_name: property_name || "",
+          property_address: property_address || "",
+          deal_date: deal_date || "",
+          lease_period,
+          link_url: link_url || "",
+          asking_rental: askingFmt,
+          actual_rental: actualFmt,
+          escalation_period: "",
+          invoice_total: inv != null && Number.isFinite(inv) ? inv : null,
+          agent_share_percent: Number.isFinite(share) ? share : 50,
+          notes: notes || "",
+          deal_image: dealImage,
+          lease_start_date: lease_start || null,
+          lease_end_date: lease_end || null,
+          deal_amount_type: dealAmountType,
+          is_expected: isExpected,
+          beneficial_occupation_date: benStored || null,
+          lease_commencement_date: commStored,
+          show_on_done_deals: showOnDoneDeals
+        });
 
-    const askingFmt = "";
-    const actualFmt = formatPriceForSave(actual_rental || "");
+        const dealY =
+          deal_date && String(deal_date).trim().length >= 4
+            ? String(deal_date).trim().slice(0, 4)
+            : String(new Date().getFullYear());
+        return res.redirect(
+          `/admin/agent-zone?agentId=${agentIdToSave}&year=${encodeURIComponent(dealY)}`
+        );
+      }
 
-    db.prepare(`
+      const deal = db.prepare("SELECT * FROM deals WHERE id = ?").get(req.params.id);
+      if (!deal) return res.redirect("/admin/agent-zone");
+
+      const lease_end = resolveLeaseEndDate(req.body, deal.lease_end_date);
+      const lease_period =
+        buildLeasePeriodText(req.body, lease_end) ||
+        (leasePeriodLegacy && String(leasePeriodLegacy).trim()) ||
+        "";
+
+      const dealImage = deal.deal_image;
+
+      db.prepare(`
       UPDATE deals SET
         agent_id = ?,
         property_name = ?,
@@ -4268,52 +4383,83 @@ app.post(
         show_on_done_deals = ?
       WHERE id = ?
     `).run(
-      Number(agent_id),
-      property_name || "",
-      property_address || "",
-      deal_date || "",
-      lease_period,
-      link_url || "",
-      askingFmt,
-      actualFmt,
-      "",
-      inv != null && Number.isFinite(inv) ? inv : null,
-      Number.isFinite(share) ? share : 50,
-      notes || "",
-      dealImage,
-      lease_start || null,
-      lease_end || null,
-      dealAmountType,
-      isExpected,
-      benStored || null,
-      commStored,
-      showOnDoneDeals,
-      deal.id
-    );
-    syncDealMapCoordsFromPropertyLink(deal.id);
+        Number(agent_id),
+        property_name || "",
+        property_address || "",
+        deal_date || "",
+        lease_period,
+        link_url || "",
+        askingFmt,
+        actualFmt,
+        "",
+        inv != null && Number.isFinite(inv) ? inv : null,
+        Number.isFinite(share) ? share : 50,
+        notes || "",
+        dealImage,
+        lease_start || null,
+        lease_end || null,
+        dealAmountType,
+        isExpected,
+        benStored || null,
+        commStored,
+        showOnDoneDeals,
+        deal.id
+      );
+      syncDealMapCoordsFromPropertyLink(deal.id);
 
-    const dealY =
-      deal_date && String(deal_date).trim().length >= 4
-        ? String(deal_date).trim().slice(0, 4)
-        : String(new Date().getFullYear());
-    res.redirect(
-      `/admin/agent-zone?agentId=${Number(agent_id)}&year=${encodeURIComponent(dealY)}`
-    );
+      const dealY =
+        deal_date && String(deal_date).trim().length >= 4
+          ? String(deal_date).trim().slice(0, 4)
+          : String(new Date().getFullYear());
+      res.redirect(
+        `/admin/agent-zone?agentId=${Number(agent_id)}&year=${encodeURIComponent(dealY)}`
+      );
+    };
+
+    runDealEditPost().catch((e) => {
+      console.error("deal edit save:", e);
+      if (!res.headersSent) res.status(500).type("text").send("Could not save deal.");
+    });
   }
 );
 
 app.post("/admin/agent-zone/deals/:id/delete", requireLogin, (req, res) => {
-  const deal = db.prepare("SELECT * FROM deals WHERE id = ?").get(req.params.id);
-  if (!deal) return res.redirect("/admin/agent-zone");
-  safeUnlinkUpload(deal.deal_image);
-  db.prepare("DELETE FROM deals WHERE id = ?").run(deal.id);
-  const y =
-    deal.deal_date && String(deal.deal_date).trim().length >= 4
-      ? String(deal.deal_date).trim().slice(0, 4)
-      : String(new Date().getFullYear());
-  res.redirect(
-    `/admin/agent-zone?agentId=${deal.agent_id}&year=${encodeURIComponent(y)}`
-  );
+  const runDel = async () => {
+    if (supabase) {
+      const dealId = Number(req.params.id);
+      const { data: deal, error: fErr } = await supabase
+        .from("deals")
+        .select("agent_id, deal_date")
+        .eq("id", dealId)
+        .maybeSingle();
+      if (fErr) throw fErr;
+      if (!deal) return res.redirect("/admin/agent-zone");
+      const { error: dErr } = await supabase.from("deals").delete().eq("id", dealId);
+      if (dErr) throw dErr;
+      const y =
+        deal.deal_date && String(deal.deal_date).trim().length >= 4
+          ? String(deal.deal_date).trim().slice(0, 4)
+          : String(new Date().getFullYear());
+      return res.redirect(
+        `/admin/agent-zone?agentId=${Number(deal.agent_id)}&year=${encodeURIComponent(y)}`
+      );
+    }
+    const deal = db.prepare("SELECT * FROM deals WHERE id = ?").get(req.params.id);
+    if (!deal) return res.redirect("/admin/agent-zone");
+    safeUnlinkUpload(deal.deal_image);
+    db.prepare("DELETE FROM deals WHERE id = ?").run(deal.id);
+    const y =
+      deal.deal_date && String(deal.deal_date).trim().length >= 4
+        ? String(deal.deal_date).trim().slice(0, 4)
+        : String(new Date().getFullYear());
+    res.redirect(
+      `/admin/agent-zone?agentId=${deal.agent_id}&year=${encodeURIComponent(y)}`
+    );
+  };
+  runDel().catch((e) => {
+    console.error("deal delete:", e);
+    if (!res.headersSent) res.status(500).type("text").send("Could not delete deal.");
+  });
 });
 
 app.get("/admin/featured-home", requireLogin, (req, res) => {
@@ -4564,7 +4710,20 @@ app.post("/admin/buildings/:id/delete", requireLogin, (req, res) => {
 });
 
 // ADD PROPERTY PAGE
-app.get("/admin/properties/new", requireLogin, (req, res) => {
+app.get("/admin/properties/new", requireLogin, (req, res, next) => {
+  if (supabase) {
+    (async () => {
+      const listingBrokers = await sbGetListingBrokers();
+      res.render("property-form", {
+        pageTitle: "Add Property",
+        formAction: "/admin/properties/new",
+        property: null,
+        buildings: getBuildingsList(),
+        listingBrokers
+      });
+    })().catch(next);
+    return;
+  }
   res.render("property-form", {
     pageTitle: "Add Property",
     formAction: "/admin/properties/new",
@@ -4631,7 +4790,7 @@ app.post(
       const bid =
         building_id === "" || building_id == null ? null : Number(building_id);
       const useUnit = use_unit_details === "1" ? 1 : 0;
-      const brokerId = parseBrokerId(broker_id);
+      const brokerId = supabase ? await sbParseBrokerId(broker_id) : parseBrokerId(broker_id);
       const propType = normalizePropertyType(property_type);
 
       const sizeFormatted = formatSizeForSave(size);
@@ -4853,12 +5012,13 @@ app.get("/admin/properties/:id/edit-sb", requireLogin, async (req, res, next) =>
     property.priceInput = parsePriceForForm(property.price);
     property.availabilityDate = availabilityDateValue(property.availability);
 
+    const listingBrokers = await sbGetListingBrokers();
     res.render("property-form", {
       pageTitle: "Edit Property",
       formAction: `/admin/properties/${property.id}/edit`,
       property,
       buildings: getBuildingsList(),
-      listingBrokers: getListingBrokers()
+      listingBrokers
     });
   } catch (e) {
     next(e);
@@ -4925,7 +5085,7 @@ app.post(
         const bid =
           building_id === "" || building_id == null ? null : Number(building_id);
         const useUnit = use_unit_details === "1" ? 1 : 0;
-        const brokerId = parseBrokerId(broker_id);
+        const brokerId = await sbParseBrokerId(broker_id);
         const propType = normalizePropertyType(property_type);
 
         const sizeFormatted = formatSizeForSave(size);
