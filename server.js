@@ -352,6 +352,19 @@ const useStatelessAdminAuth = Boolean(process.env.VERCEL) || useSupabase;
 const ADMIN_COOKIE_NAME = "hp_admin";
 const ADMIN_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+function appendSetCookie(res, cookieValue) {
+  const prev = res.getHeader("Set-Cookie");
+  if (!prev) {
+    res.setHeader("Set-Cookie", cookieValue);
+    return;
+  }
+  if (Array.isArray(prev)) {
+    res.setHeader("Set-Cookie", [...prev, cookieValue]);
+    return;
+  }
+  res.setHeader("Set-Cookie", [String(prev), cookieValue]);
+}
+
 function parseCookies(req) {
   const header = req.headers && req.headers.cookie ? String(req.headers.cookie) : "";
   const out = {};
@@ -410,7 +423,7 @@ function setAdminCookie(res, username) {
     `Max-Age=${maxAge}`
   ];
   if (secure) parts.push("Secure");
-  res.setHeader("Set-Cookie", parts.join("; "));
+  appendSetCookie(res, parts.join("; "));
 }
 
 function clearAdminCookie(res) {
@@ -423,7 +436,7 @@ function clearAdminCookie(res) {
     "Max-Age=0"
   ];
   if (secure) parts.push("Secure");
-  res.setHeader("Set-Cookie", parts.join("; "));
+  appendSetCookie(res, parts.join("; "));
 }
 
 app.use(express.static(publicDir));
