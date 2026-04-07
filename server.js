@@ -576,6 +576,101 @@ function requireLogin(req, res, next) {
   return next();
 }
 
+/** Deep diagnostics when saves fail on Vercel (login required). */
+app.get("/admin/debug/backend", requireLogin, async (req, res) => {
+  const secret = SUPABASE_SECRET_KEY || "";
+  let host = null;
+  try {
+    if (SUPABASE_URL) host = new URL(SUPABASE_URL).hostname;
+  } catch (_) {
+    /* ignore */
+  }
+  const out = {
+    rid: req._rid,
+    useSupabase,
+    vercel: Boolean(process.env.VERCEL),
+    supabaseHost: host,
+    keyShape: secret.startsWith("sb_secret_")
+      ? "sb_secret_* (service role secret — expected)"
+      : secret.startsWith("eyJ")
+        ? "eyJ* (JWT — must be the service role JWT, not anon, or RLS will block writes)"
+        : secret
+          ? "other (verify SUPABASE_SECRET_KEY in Vercel)"
+          : "MISSING"
+  };
+  if (!supabase) {
+    out.hint = "Set SUPABASE_URL and SUPABASE_SECRET_KEY on Vercel, then redeploy.";
+    return res.json(out);
+  }
+  try {
+    const { data, error } = await supabase.from("properties").select("id,name").limit(1);
+    out.propertiesRead = error
+      ? { ok: false, message: error.message, code: error.code }
+      : { ok: true, hasRow: Boolean(data && data[0]), id: data && data[0] ? data[0].id : null };
+    if (data && data[0]) {
+      const row = data[0];
+      const { error: uErr } = await supabase
+        .from("properties")
+        .update({ name: row.name })
+        .eq("id", row.id);
+      out.propertiesNoopWrite = uErr
+        ? { ok: false, message: uErr.message, code: uErr.code }
+        : { ok: true };
+    }
+  } catch (e) {
+    out.exception = String(e && e.message ? e.message : e);
+  }
+  res.json(out);
+});
+
+/** Confirms multipart + multer see form fields (same middleware as property save). */
+app.post(
+  "/admin/debug/multer-parse",
+  requireLogin,
+  uploadPropertyForm.fields([
+    { name: "displayImage", maxCount: 1 },
+    { name: "images", maxCount: 40 },
+    { name: "propertyVideo", maxCount: 1 }
+  ]),
+  (req, res) => {
+    res.json({
+      rid: req._rid,
+      contentType: req.headers["content-type"] || null,
+      bodyKeys: Object.keys(req.body || {}),
+      nameSample:
+        req.body && req.body.name != null ? String(req.body.name).slice(0, 120) : null,
+      fileFields: req.files ? Object.keys(req.files) : []
+    });
+  }
+);
+
+/** JSON-only core field save (bypasses multipart). Use to test Supabase writes from the browser console. */
+app.post("/admin/api/properties/:id/save-core", requireLogin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(400).json({ error: "supabase_off" });
+    const pid = Number(req.params.id);
+    if (!Number.isFinite(pid) || pid <= 0) return res.status(400).json({ error: "bad_id" });
+    const { name, area, status } = req.body || {};
+    const nameTrim = name != null ? String(name).trim() : "";
+    const areaTrim = area != null ? String(area).trim() : "";
+    const statusTrim = status != null ? String(status).trim() : "";
+    if (!nameTrim || !areaTrim || !statusTrim) {
+      return res.status(400).json({ error: "name_area_status_required" });
+    }
+    await sbUpdateWithDropUnknownColumns("properties", "id", pid, {
+      name: nameTrim,
+      area: areaTrim,
+      status: statusTrim
+    });
+    res.json({ ok: true, rid: req._rid });
+  } catch (e) {
+    res.status(500).json({
+      error: String(e && e.message ? e.message : e),
+      rid: req._rid
+    });
+  }
+});
+
 /** Accepts YouTube watch / embed / shorts / youtu.be URL or an 11-character id; returns id or null. */
 function parseYoutubeVideoId(input) {
   if (input == null) return null;
@@ -933,20 +1028,11 @@ async function sbUpdateWithDropUnknownColumns(table, matchCol, matchVal, row) {
         `Update ${table}: no writable columns left (schema may be missing every field we send). Dropped: ${dropped.join(", ") || "(none)"}`
       );
     }
+    // NOTE: Do not chain `.select()` here. Some PostgREST/RLS/cache combinations return []
+    // even when the row updated, which falsely made every save look "broken".
     // eslint-disable-next-line no-await-in-loop
-    const { data, error } = await supabase
-      .from(table)
-      .update(payload)
-      .eq(matchCol, matchVal)
-      .select(matchCol);
-    if (!error) {
-      if (!data || !data.length) {
-        throw new Error(
-          `Update ${table}: matched 0 rows for ${matchCol}=${matchVal}. Check the row id, and that Vercel uses SUPABASE_SECRET_KEY (service role), not the anon key — RLS can block updates with the anon key.`
-        );
-      }
-      return { dropped };
-    }
+    const { error } = await supabase.from(table).update(payload).eq(matchCol, matchVal);
+    if (!error) return { dropped };
     const missing =
       String(error.code) === "42703"
         ? getMissingColumnFromPg42703Message(error.message)
