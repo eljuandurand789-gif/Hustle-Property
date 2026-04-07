@@ -33,7 +33,9 @@ function lanIPv4Addresses() {
 // Without it, OpenStreetMap Nominatim is used as a fallback.
 
 // folders
-const uploadsDir = path.join(__dirname, "uploads");
+const uploadsDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), "uploads")
+  : path.join(__dirname, "uploads");
 const publicDir = path.join(__dirname, "public");
 const viewsDir = path.join(__dirname, "views");
 
@@ -2351,7 +2353,10 @@ function schedulePropertyGeocode(propertyId, address, area) {
   const pid = Number(propertyId);
   if (!addr || !Number.isFinite(pid) || pid <= 0) return;
 
-  setImmediate(() => {
+  // On serverless, background tasks can keep the event loop alive and cause timeouts.
+  if (process.env.VERCEL || useSupabase) return;
+
+  const im = setImmediate(() => {
     geocodeAddressForProperty(address, area)
       .then((coords) => {
         if (!coords) return;
@@ -2365,6 +2370,7 @@ function schedulePropertyGeocode(propertyId, address, area) {
       })
       .catch((e) => console.error("Geocode failed:", e.message));
   });
+  if (typeof im === "object" && typeof im.unref === "function") im.unref();
 }
 
 /** Featured card / carousel: e.g. "300amps" when the field is just a number. */
