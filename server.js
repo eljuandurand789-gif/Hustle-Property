@@ -660,11 +660,11 @@ async function sbGetAdminProperties(area = "") {
   let data;
   let error;
   ({ data, error } = await run(
-    "id,name,area,status,priority_group,property_type,display_image,created_at"
+    "id,name,area,status,priority_group,property_type,created_at"
   ));
   if (error && String(error.code) === "42703") {
     // Older schema: no priority_group/property_type yet.
-    ({ data, error } = await run("id,name,area,status,display_image,created_at"));
+    ({ data, error } = await run("id,name,area,status,created_at"));
   }
   if (error) throw error;
   let rows = data || [];
@@ -4466,39 +4466,35 @@ app.post(
 
       if (supabase) {
         // Insert first to get an id, then upload files to Storage and write image rows.
-        const { data: created, error: createErr } = await supabase
-          .from("properties")
-          .insert([
-            {
-              name,
-              area,
-              status,
-              priority_group: priority_group || "medium",
-              size: sizeFormatted,
-              address: address || "",
-              price: priceFormatted,
-              availability: availabilityVal,
-              description: description || "",
-              features: "",
-              notes: notes || "",
-              display_image: null,
-              building_id: Number.isFinite(bid) ? bid : null,
-              use_unit_details: useUnit,
-              broker_id: brokerId,
-              video_filename: videoFilename,
-              youtube_video_id: youtubeVideoId,
-              power_phase: pp,
-              power_amps: amps,
-              height_eave_apex: hApex,
-              height_eave_roller_shutter: hRs,
-              parking_bays: park,
-              yard_space: yardSpace,
-              property_type: propType
-            }
-          ])
-          .select("*")
-          .single();
-        if (createErr) throw createErr;
+        const { data: created } = await sbInsertWithDropUnknownColumns(
+          "properties",
+          {
+            name,
+            area,
+            status,
+            priority_group: priority_group || "medium",
+            size: sizeFormatted,
+            address: address || "",
+            price: priceFormatted,
+            availability: availabilityVal,
+            description: description || "",
+            features: "",
+            notes: notes || "",
+            building_id: Number.isFinite(bid) ? bid : null,
+            use_unit_details: useUnit,
+            broker_id: brokerId,
+            video_filename: videoFilename,
+            youtube_video_id: youtubeVideoId,
+            power_phase: pp,
+            power_amps: amps,
+            height_eave_apex: hApex,
+            height_eave_roller_shutter: hRs,
+            parking_bays: park,
+            yard_space: yardSpace,
+            property_type: propType
+          },
+          "id"
+        );
 
         const propertyId = created.id;
         const safePrefix = `properties/${propertyId}`;
@@ -4533,11 +4529,9 @@ app.post(
 
         // Update property with display_image path (after upload)
         if (displayImagePath) {
-          const { error: upErr } = await supabase
-            .from("properties")
-            .update({ display_image: displayImagePath })
-            .eq("id", propertyId);
-          if (upErr) throw upErr;
+          await sbUpdateWithDropUnknownColumns("properties", "id", propertyId, {
+            display_image: displayImagePath
+          });
         }
 
         res.redirect("/admin?success=created");
@@ -4786,35 +4780,31 @@ app.post(
           displayImagePath = await sbUploadMulterFile(coverFile, coverPath);
         }
 
-        const { error: upErr } = await supabase
-          .from("properties")
-          .update({
-            name,
-            area,
-            status,
-            priority_group: priority_group || "medium",
-            size: sizeFormatted,
-            address: address || "",
-            price: priceFormatted,
-            availability: availabilityVal,
-            description: description || "",
-            notes: notes || "",
-            display_image: displayImagePath,
-            building_id: Number.isFinite(bid) ? bid : null,
-            use_unit_details: useUnit,
-            broker_id: brokerId,
-            video_filename: videoFilename,
-            youtube_video_id: youtubeVideoId,
-            power_phase: pp,
-            power_amps: amps,
-            height_eave_apex: hApex,
-            height_eave_roller_shutter: hRs,
-            parking_bays: park,
-            yard_space: yardSpace,
-            property_type: propType
-          })
-          .eq("id", pid);
-        if (upErr) throw upErr;
+        await sbUpdateWithDropUnknownColumns("properties", "id", pid, {
+          name,
+          area,
+          status,
+          priority_group: priority_group || "medium",
+          size: sizeFormatted,
+          address: address || "",
+          price: priceFormatted,
+          availability: availabilityVal,
+          description: description || "",
+          notes: notes || "",
+          display_image: displayImagePath,
+          building_id: Number.isFinite(bid) ? bid : null,
+          use_unit_details: useUnit,
+          broker_id: brokerId,
+          video_filename: videoFilename,
+          youtube_video_id: youtubeVideoId,
+          power_phase: pp,
+          power_amps: amps,
+          height_eave_apex: hApex,
+          height_eave_roller_shutter: hRs,
+          parking_bays: park,
+          yard_space: yardSpace,
+          property_type: propType
+        });
 
         // Append gallery images
         const galleryFiles = req.files?.images || [];
