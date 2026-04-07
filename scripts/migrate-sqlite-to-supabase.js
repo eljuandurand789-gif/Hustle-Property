@@ -252,6 +252,7 @@ async function main() {
       const imgRow = {
         property_id: newId,
         filename: uploaded,
+        storage_path: uploaded,
         image_order: g.image_order || i + 1
       };
       const { dropped: droppedImgCols } = await insertWithDropUnknownColumns(

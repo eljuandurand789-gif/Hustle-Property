@@ -475,12 +475,15 @@ async function sbListPropertyImages(propertyId) {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("property_images")
-    .select("id, property_id, filename, image_order")
+    .select("id, property_id, filename, storage_path, image_order")
     .eq("property_id", propertyId)
     .order("image_order", { ascending: true })
     .order("id", { ascending: true });
   if (error) throw error;
-  return data || [];
+  return (data || []).map((row) => ({
+    ...row,
+    filename: row.storage_path || row.filename
+  }));
 }
 
 function enrichPropertyForRender(property, images) {
@@ -568,14 +571,15 @@ async function sbGetPublicProperties(filters = {}) {
   if (ids.length) {
     const { data: imgs, error: imgErr } = await supabase
       .from("property_images")
-      .select("property_id, filename, image_order, id")
+      .select("property_id, filename, storage_path, image_order, id")
       .in("property_id", ids)
       .order("image_order", { ascending: true })
       .order("id", { ascending: true });
     if (imgErr) throw imgErr;
     (imgs || []).forEach((img) => {
+      const normalized = { ...img, filename: img.storage_path || img.filename };
       const arr = imagesByProp.get(img.property_id) || [];
-      arr.push(img);
+      arr.push(normalized);
       imagesByProp.set(img.property_id, arr);
     });
   }
@@ -612,8 +616,9 @@ async function sbGetAdminProperties(area = "") {
       .order("id", { ascending: true });
     if (imgErr) throw imgErr;
     (imgs || []).forEach((img) => {
+      const normalized = { ...img, filename: img.storage_path || img.filename };
       const arr = imagesByProp.get(img.property_id) || [];
-      arr.push(img);
+      arr.push(normalized);
       imagesByProp.set(img.property_id, arr);
     });
   }
@@ -3930,7 +3935,12 @@ app.post(
           ).replace(/\s+/g, "-")}`;
           const uploadedPath = await sbUploadMulterFile(f, p);
           const { error: imgErr } = await supabase.from("property_images").insert([
-            { property_id: propertyId, filename: uploadedPath, image_order: i + 1 }
+            {
+              property_id: propertyId,
+              filename: uploadedPath,
+              storage_path: uploadedPath,
+              image_order: i + 1
+            }
           ]);
           if (imgErr) throw imgErr;
         }
@@ -4239,7 +4249,12 @@ app.post(
             ).replace(/\s+/g, "-")}`;
             const uploadedPath = await sbUploadMulterFile(f, p);
             const { error: imgErr } = await supabase.from("property_images").insert([
-              { property_id: pid, filename: uploadedPath, image_order: currentMax + i + 1 }
+              {
+                property_id: pid,
+                filename: uploadedPath,
+                storage_path: uploadedPath,
+                image_order: currentMax + i + 1
+              }
             ]);
             if (imgErr) throw imgErr;
           }
