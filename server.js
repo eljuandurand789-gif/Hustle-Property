@@ -702,6 +702,36 @@ async function sbUploadMulterFile(file, storagePath) {
   return p;
 }
 
+async function sbGetAgents() {
+  const { data, error } = await supabase.from("agents").select("*").order("name");
+  if (error) throw error;
+  return data || [];
+}
+
+async function sbGetDealsForAgent(agentId, yearStr) {
+  let q = supabase.from("deals").select("*").eq("agent_id", agentId).order("id", { ascending: false });
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = data || [];
+  if (!yearStr || !/^\d{4}$/.test(String(yearStr).trim())) return rows;
+  const y = parseInt(String(yearStr).trim(), 10);
+  const ys = String(yearStr).trim();
+  return rows.filter(
+    (d) => dealBelongsToCalendarYear(d, y) && dealIncludedForAgentYearWindow(d, ys)
+  );
+}
+
+async function sbGetAgentPayouts(agentId) {
+  const { data, error } = await supabase
+    .from("agent_payouts")
+    .select("*")
+    .eq("agent_id", agentId)
+    .order("payout_date", { ascending: false })
+    .order("id", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 function shuffleArray(items) {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -2050,12 +2080,14 @@ function computeDealStats(deals) {
   };
 }
 
-function getDealsForAgentInCalendarMonth(agentId, y, monthIndex0to11) {
-  const rows = db
-    .prepare(
-      `SELECT * FROM deals WHERE agent_id = ? ORDER BY deal_date DESC, id DESC`
-    )
-    .all(agentId);
+function getDealsForAgentInCalendarMonth(agentId, y, monthIndex0to11, dealsOverride) {
+  const rows = Array.isArray(dealsOverride)
+    ? dealsOverride
+    : db
+        .prepare(
+          `SELECT * FROM deals WHERE agent_id = ? ORDER BY deal_date DESC, id DESC`
+        )
+        .all(agentId);
   const yearStr = String(y);
   return rows.filter((d) => {
     if (y === 2025 && monthIndex0to11 < 6) return false;
@@ -3166,15 +3198,14 @@ app.post("/admin/capture-lead", requireLogin, (req, res) => {
 });
 
 app.get("/admin/agent-zone", requireLogin, (req, res) => {
-  if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
-  const agents = getAgents();
-  const selectedAgentId =
-    Number(req.query.agentId) || (agents[0] && agents[0].id) || null;
-  const yq = (req.query.year || "").trim();
-  const currentY = new Date().getFullYear();
-  const year =
-    yq && /^\d{4}$/.test(yq) ? yq : String(currentY);
-  const yearNum = parseInt(year, 10);
+  const run = async () => {
+    const agents = useSupabase ? await sbGetAgents() : getAgents();
+    const selectedAgentId =
+      Number(req.query.agentId) || (agents[0] && agents[0].id) || null;
+    const yq = (req.query.year || "").trim();
+    const currentY = new Date().getFullYear();
+    const year = yq && /^\d{4}$/.test(yq) ? yq : String(currentY);
+    const yearNum = parseInt(year, 10);
   let yearOptions = [currentY + 1, currentY, currentY - 1, currentY - 2, currentY - 3];
   if (Number.isFinite(yearNum) && !yearOptions.includes(yearNum)) {
     yearOptions.push(yearNum);
@@ -3225,7 +3256,9 @@ app.get("/admin/agent-zone", requireLogin, (req, res) => {
   let thisMonthLabel = "";
   let dealsChronological = [];
   if (selectedAgentId) {
-    deals = getDealsForAgent(selectedAgentId, year);
+    deals = useSupabase
+      ? await sbGetDealsForAgent(selectedAgentId, year)
+      : getDealsForAgent(selectedAgentId, year);
     dealsChronological = [...deals].sort((a, b) =>
       dealReportingIsoDate(a).localeCompare(dealReportingIsoDate(b))
     );
@@ -3261,10 +3294,11 @@ app.get("/admin/agent-zone", requireLogin, (req, res) => {
       year: "numeric"
     });
     const dm = getDealsForAgentInCalendarMonth(
-      selectedAgentId,
-      now.getFullYear(),
-      now.getMonth()
-    );
+        selectedAgentId,
+        now.getFullYear(),
+        now.getMonth(),
+        deals
+      );
     const mPart = partitionDealsExpected(dm);
     dashboardMonthConfirmed = moneyPairFromDeals(mPart.actual);
     dashboardMonthExpected = moneyPairFromDeals(mPart.expected);
@@ -3315,6 +3349,11 @@ app.get("/admin/agent-zone", requireLogin, (req, res) => {
     totalInvoiceForYear,
     invoiceVsTargetPct,
     dealsChronological
+  });
+  };
+  run().catch((e) => {
+    console.error("agent-zone:", e);
+    res.status(500).type("text").send("Agent Zone failed to load.");
   });
 });
 
