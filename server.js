@@ -365,6 +365,29 @@ function appendSetCookie(res, cookieValue) {
   res.setHeader("Set-Cookie", [String(prev), cookieValue]);
 }
 
+// Debug helper for Vercel auth issues (safe: doesn't reveal secret, only cookie presence + validity).
+app.get("/admin/auth-debug", (req, res) => {
+  const cookies = parseCookies(req);
+  const raw = cookies[ADMIN_COOKIE_NAME] || "";
+  const verified = verifyAdminToken(raw);
+  res.type("json").send(
+    JSON.stringify(
+      {
+        useStatelessAdminAuth,
+        hasHpAdminCookie: Boolean(raw),
+        hpAdminValid: Boolean(verified),
+        hpAdminUsername: verified ? verified.username : null,
+        hasSession: Boolean(req.session),
+        sessionLoggedIn: Boolean(req.session && req.session.loggedIn),
+        host: req.headers.host || null,
+        proto: req.headers["x-forwarded-proto"] || null
+      },
+      null,
+      2
+    )
+  );
+});
+
 function parseCookies(req) {
   const header = req.headers && req.headers.cookie ? String(req.headers.cookie) : "";
   const out = {};
@@ -4554,6 +4577,17 @@ app.post(
         property_type
       } = req.body;
 
+      // Basic required fields (HTML already requires these, but protect server-side too)
+      const nameTrim = name != null ? String(name).trim() : "";
+      const areaTrim = area != null ? String(area).trim() : "";
+      const statusTrim = status != null ? String(status).trim() : "";
+      if (!nameTrim || !areaTrim || !statusTrim) {
+        return res
+          .status(400)
+          .type("text")
+          .send("Missing required fields: name, area, and status are required.");
+      }
+
       const displayImage = req.files?.displayImage?.[0]?.filename || null;
       let videoFilename = req.files?.propertyVideo?.[0]?.filename || null;
       let youtubeVideoId = parseYoutubeVideoId(req.body.youtube_url);
@@ -4597,9 +4631,9 @@ app.post(
         const { data: created } = await sbInsertWithDropUnknownColumns(
           "properties",
           {
-            name,
-            area,
-            status,
+            name: nameTrim,
+            area: areaTrim,
+            status: statusTrim,
             priority_group: priority_group || "medium",
             size: sizeFormatted,
             address: address || "",
