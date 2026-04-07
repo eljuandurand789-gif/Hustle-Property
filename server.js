@@ -708,6 +708,21 @@ async function sbParseBrokerId(raw) {
   return data && data.id != null ? n : null;
 }
 
+/** Avoid FK violations: only keep building_id if that row exists in Supabase. */
+async function sbResolveBuildingIdForSave(raw) {
+  if (!supabase) {
+    if (raw === "" || raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  if (raw === "" || raw == null) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const { data, error } = await supabase.from("buildings").select("id").eq("id", n).maybeSingle();
+  if (error) throw error;
+  return data && data.id != null ? n : null;
+}
+
 async function sbGetPublicProperties(filters = {}) {
   const selectedArea = filters.area || "";
   const selectedStatus = filters.status || "";
@@ -913,9 +928,25 @@ async function sbUpdateWithDropUnknownColumns(table, matchCol, matchVal, row) {
   const payload = JSON.parse(JSON.stringify(row || {}));
   const dropped = [];
   for (let tries = 0; tries < 30; tries += 1) {
+    if (!Object.keys(payload).length) {
+      throw new Error(
+        `Update ${table}: no writable columns left (schema may be missing every field we send). Dropped: ${dropped.join(", ") || "(none)"}`
+      );
+    }
     // eslint-disable-next-line no-await-in-loop
-    const { error } = await supabase.from(table).update(payload).eq(matchCol, matchVal);
-    if (!error) return { dropped };
+    const { data, error } = await supabase
+      .from(table)
+      .update(payload)
+      .eq(matchCol, matchVal)
+      .select(matchCol);
+    if (!error) {
+      if (!data || !data.length) {
+        throw new Error(
+          `Update ${table}: matched 0 rows for ${matchCol}=${matchVal}. Check the row id, and that Vercel uses SUPABASE_SECRET_KEY (service role), not the anon key — RLS can block updates with the anon key.`
+        );
+      }
+      return { dropped };
+    }
     const missing =
       String(error.code) === "42703"
         ? getMissingColumnFromPg42703Message(error.message)
@@ -4791,6 +4822,11 @@ app.post(
         building_id === "" || building_id == null ? null : Number(building_id);
       const useUnit = use_unit_details === "1" ? 1 : 0;
       const brokerId = supabase ? await sbParseBrokerId(broker_id) : parseBrokerId(broker_id);
+      const buildingIdToSave = supabase
+        ? await sbResolveBuildingIdForSave(building_id)
+        : bid != null && Number.isFinite(bid) && bid > 0
+          ? bid
+          : null;
       const propType = normalizePropertyType(property_type);
 
       const sizeFormatted = formatSizeForSave(size);
@@ -4832,7 +4868,7 @@ app.post(
             description: description || "",
             features: "",
             notes: notes || "",
-            building_id: Number.isFinite(bid) ? bid : null,
+            building_id: buildingIdToSave,
             use_unit_details: useUnit,
             broker_id: brokerId,
             video_filename: videoFilename,
@@ -4931,7 +4967,7 @@ app.post(
         "",
         notes || "",
         displayImage,
-        Number.isFinite(bid) ? bid : null,
+        buildingIdToSave,
         useUnit,
         brokerId,
         videoFilename,
@@ -5086,6 +5122,7 @@ app.post(
           building_id === "" || building_id == null ? null : Number(building_id);
         const useUnit = use_unit_details === "1" ? 1 : 0;
         const brokerId = await sbParseBrokerId(broker_id);
+        const buildingIdToSave = await sbResolveBuildingIdForSave(building_id);
         const propType = normalizePropertyType(property_type);
 
         const sizeFormatted = formatSizeForSave(size);
@@ -5169,7 +5206,7 @@ app.post(
           description: description || "",
           notes: notes || "",
           display_image: displayImagePath,
-          building_id: Number.isFinite(bid) ? bid : null,
+          building_id: buildingIdToSave,
           use_unit_details: useUnit,
           broker_id: brokerId,
           video_filename: videoFilename,
