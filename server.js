@@ -2651,11 +2651,18 @@ function pickCarouselSpecLines(p) {
 
 function mapPropertyToFeaturedSlide(p) {
   const files = [...new Set((p.galleryFilenames || []).filter(Boolean))];
-  const urls =
-    p.galleryUrls && p.galleryUrls.length ? p.galleryUrls : files.map((f) => `/uploads/${f}`);
+  const urls = useSupabase
+    ? p.galleryUrls && p.galleryUrls.length
+      ? p.galleryUrls
+      : files.map((f) => supabasePublicObjectUrl(f) || f)
+    : files.map((f) => `/uploads/${f}`);
   let galleryImages;
   if (p.cardImage) {
-    const cover = p.cardImageUrl ? p.cardImageUrl : `/uploads/${p.cardImage}`;
+    const cover = useSupabase
+      ? p.cardImageUrl || supabasePublicObjectUrl(p.cardImage) || p.cardImage
+      : p.cardImageUrl
+        ? p.cardImageUrl
+        : `/uploads/${p.cardImage}`;
     const rest = urls.filter((u) => u !== cover);
     galleryImages = [cover, ...rest].slice(0, 14);
   } else {
