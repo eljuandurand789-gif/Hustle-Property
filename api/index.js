@@ -6,10 +6,18 @@ const app = require("../server");
 
 // Vercel Node Functions use (req, res). An Express app is already a compatible handler.
 module.exports = (req, res) => {
-  // Restore original path from rewrite.
-  const p = req && req.query && typeof req.query.path === "string" ? req.query.path : "";
-  if (p) {
-    req.url = "/" + p;
+  // Restore original path + query from rewrite.
+  // vercel.json rewrites all routes to /api/index.js?path=<original>&<original query...>
+  try {
+    const u = new URL(req.url, "http://localhost");
+    const p = u.searchParams.get("path") || "";
+    if (p) {
+      u.searchParams.delete("path");
+      const rest = u.searchParams.toString();
+      req.url = "/" + p + (rest ? "?" + rest : "");
+    }
+  } catch (_) {
+    // ignore
   }
   return app(req, res);
 };
