@@ -14,18 +14,45 @@ const fs = require("fs");
 const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
+function stripOuterQuotes(s) {
+  const v = String(s || "").trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    return v.slice(1, -1).trim();
+  }
+  return v;
+}
+
+const SUPABASE_PROJECT_REF =
+  stripOuterQuotes(process.env.SUPABASE_PROJECT_REF) ||
+  stripOuterQuotes(process.env.SUPABASE_REF) ||
+  "";
+
+let SUPABASE_URL = stripOuterQuotes(process.env.SUPABASE_URL) || "";
+if (!SUPABASE_URL && SUPABASE_PROJECT_REF) {
+  SUPABASE_URL = `https://${SUPABASE_PROJECT_REF}.supabase.co`;
+}
+// Some people paste just the ref into SUPABASE_URL by mistake; fix that too.
+if (SUPABASE_URL && !/^https?:\/\//i.test(SUPABASE_URL) && /^[a-z0-9-]{6,}$/i.test(SUPABASE_URL)) {
+  SUPABASE_URL = `https://${SUPABASE_URL}.supabase.co`;
+}
 const SUPABASE_SECRET_KEY =
-  process.env.SUPABASE_SECRET_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  process.env.SUPABASE_SECRET ||
-  process.env.SUPABASE_KEY ||
+  stripOuterQuotes(process.env.SUPABASE_SECRET_KEY) ||
+  stripOuterQuotes(process.env.SUPABASE_SERVICE_ROLE_KEY) ||
+  stripOuterQuotes(process.env.SUPABASE_SERVICE_KEY) ||
+  stripOuterQuotes(process.env.SUPABASE_SECRET) ||
+  stripOuterQuotes(process.env.SUPABASE_KEY) ||
   "";
 const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "property-images";
 
-if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
-  console.error("Missing SUPABASE_URL or SUPABASE_SECRET_KEY in env.");
+if (!SUPABASE_URL || !/^https?:\/\/.+/i.test(SUPABASE_URL) || !SUPABASE_SECRET_KEY) {
+  console.error("Missing/invalid Supabase env vars.");
+  console.error("Set either SUPABASE_URL (full https://...supabase.co) OR SUPABASE_PROJECT_REF.");
+  console.error("Also set SUPABASE_SECRET_KEY to your sb_secret_... value.");
+  console.error("");
+  console.error("Current values:");
+  console.error("SUPABASE_URL =", SUPABASE_URL || "(empty)");
+  console.error("SUPABASE_PROJECT_REF =", SUPABASE_PROJECT_REF || "(empty)");
+  console.error("SUPABASE_SECRET_KEY =", SUPABASE_SECRET_KEY ? "(set)" : "(empty)");
   process.exit(1);
 }
 
@@ -46,6 +73,62 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
 const repoRoot = path.join(__dirname, "..");
 const uploadsDir = path.join(repoRoot, "uploads");
 const sqlitePath = path.join(repoRoot, "properties.db");
+
+function clone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function getMissingColumnFromPgrstMessage(msg) {
+  const m = String(msg || "").match(/Could not find the '([^']+)' column/i);
+  return m ? m[1] : null;
+}
+
+async function insertWithDropUnknownColumns(table, row, returning = "id") {
+  // PostgREST throws PGRST204 when a column doesn't exist in the schema cache.
+  // This lets migration proceed even if your table is missing some columns.
+  const payload = clone(row);
+  const dropped = [];
+  for (let tries = 0; tries < 30; tries += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { data, error } = await supabase
+      .from(table)
+      .insert([payload])
+      .select(returning)
+      .single();
+    if (!error) return { data, dropped };
+    const missing =
+      error.code === "PGRST204" ? getMissingColumnFromPgrstMessage(error.message) : null;
+    if (missing && Object.prototype.hasOwnProperty.call(payload, missing)) {
+      dropped.push(missing);
+      delete payload[missing];
+      // retry
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+    throw error;
+  }
+  throw new Error(`Too many retries inserting into ${table}. Dropped: ${dropped.join(", ")}`);
+}
+
+async function updateWithDropUnknownColumns(table, matchCol, matchVal, row) {
+  const payload = clone(row);
+  const dropped = [];
+  for (let tries = 0; tries < 30; tries += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { error } = await supabase.from(table).update(payload).eq(matchCol, matchVal);
+    if (!error) return { dropped };
+    const missing =
+      error.code === "PGRST204" ? getMissingColumnFromPgrstMessage(error.message) : null;
+    if (missing && Object.prototype.hasOwnProperty.call(payload, missing)) {
+      dropped.push(missing);
+      delete payload[missing];
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+    throw error;
+  }
+  throw new Error(`Too many retries updating ${table}. Dropped: ${dropped.join(", ")}`);
+}
 
 function safeName(s) {
   return String(s || "")
@@ -135,14 +218,18 @@ async function main() {
       longitude: p.longitude == null || p.longitude === "" ? null : Number(p.longitude)
     };
 
-    const { data: created, error: createErr } = await supabase
-      .from("properties")
-      .insert([insertRow])
-      .select("id")
-      .single();
-    if (createErr) throw createErr;
+    const { data: created, dropped: droppedPropCols } = await insertWithDropUnknownColumns(
+      "properties",
+      insertRow,
+      "id"
+    );
     const newId = created.id;
     const prefix = `properties/${newId}`;
+    if (droppedPropCols.length) {
+      console.log(
+        `Note: properties columns missing in Supabase (skipped): ${droppedPropCols.join(", ")}`
+      );
+    }
 
     // Upload cover
     let coverPath = null;
@@ -162,19 +249,30 @@ async function main() {
       )}${ext}`;
       const uploaded = await uploadFile(g.filename, dest);
       if (!uploaded) continue;
-      const { error: imgErr } = await supabase.from("property_images").insert([
-        { property_id: newId, filename: uploaded, image_order: g.image_order || i + 1 }
-      ]);
-      if (imgErr) throw imgErr;
+      const imgRow = {
+        property_id: newId,
+        filename: uploaded,
+        image_order: g.image_order || i + 1
+      };
+      const { dropped: droppedImgCols } = await insertWithDropUnknownColumns(
+        "property_images",
+        imgRow,
+        "id"
+      );
+      if (droppedImgCols.length) {
+        console.log(
+          `Note: property_images columns missing in Supabase (skipped): ${droppedImgCols.join(
+            ", "
+          )}`
+        );
+      }
     }
 
     // Update display_image after cover upload
     if (coverPath) {
-      const { error: upErr } = await supabase
-        .from("properties")
-        .update({ display_image: coverPath })
-        .eq("id", newId);
-      if (upErr) throw upErr;
+      await updateWithDropUnknownColumns("properties", "id", newId, {
+        display_image: coverPath
+      });
     }
 
     console.log(`Migrated SQLite property ${p.id} → Supabase ${newId}`);
