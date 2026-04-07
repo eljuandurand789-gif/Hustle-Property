@@ -732,6 +732,37 @@ async function sbGetAgentPayouts(agentId) {
   return data || [];
 }
 
+async function sbGetPropertiesForDealPrefill() {
+  const { data, error } = await supabase
+    .from("properties")
+    .select("id, name, address, area, status")
+    .order("area", { ascending: true })
+    .order("name", { ascending: true })
+    .limit(2000);
+  if (error) throw error;
+  return data || [];
+}
+
+async function sbGetBuildings() {
+  const { data, error } = await supabase.from("buildings").select("*").order("name");
+  if (error) throw error;
+  return data || [];
+}
+
+async function sbGetBuildingImages(buildingId) {
+  const { data, error } = await supabase
+    .from("building_images")
+    .select("id, building_id, storage_path, image_order")
+    .eq("building_id", buildingId)
+    .order("image_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    ...row,
+    filename: row.storage_path
+  }));
+}
+
 function shuffleArray(items) {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -3358,14 +3389,13 @@ app.get("/admin/agent-zone", requireLogin, (req, res) => {
 });
 
 app.get("/admin/agent-zone/month", requireLogin, (req, res) => {
-  if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
-  const agents = getAgents();
-  const selectedAgentId =
-    Number(req.query.agentId) || (agents[0] && agents[0].id) || null;
-  const yq = (req.query.year || "").trim();
-  const currentY = new Date().getFullYear();
-  const year =
-    yq && /^\d{4}$/.test(yq) ? yq : String(currentY);
+  const run = async () => {
+    const agents = useSupabase ? await sbGetAgents() : getAgents();
+    const selectedAgentId =
+      Number(req.query.agentId) || (agents[0] && agents[0].id) || null;
+    const yq = (req.query.year || "").trim();
+    const currentY = new Date().getFullYear();
+    const year = yq && /^\d{4}$/.test(yq) ? yq : String(currentY);
   const monthQ = (req.query.month || "").trim();
   let selectedMonth = null;
   let monthDetailDeals = [];
@@ -3386,8 +3416,16 @@ app.get("/admin/agent-zone/month", requireLogin, (req, res) => {
     );
   }
   selectedMonth = mi;
-  monthDetailDeals = getDealsForAgentInMonth(selectedAgentId, year, mi);
-  monthsWithDeals = getMonthIndicesWithDeals(selectedAgentId, year);
+    const deals = useSupabase
+      ? await sbGetDealsForAgent(selectedAgentId, year)
+      : getDealsForAgent(selectedAgentId, year);
+    monthDetailDeals = deals.filter((d) => dealMonthIndexForYear(d, parseInt(year, 10)) === mi);
+    const seen = new Set();
+    deals.forEach((d) => {
+      const idx = dealMonthIndexForYear(d, parseInt(year, 10));
+      if (idx != null) seen.add(idx);
+    });
+    monthsWithDeals = [...seen].sort((a, b) => a - b);
 
   const monthNames = [
     "January",
@@ -3428,6 +3466,11 @@ app.get("/admin/agent-zone/month", requireLogin, (req, res) => {
     monthNames,
     monthNamesShort
   });
+  };
+  run().catch((e) => {
+    console.error("agent-zone-month:", e);
+    res.status(500).type("text").send("Agent Zone month failed to load.");
+  });
 });
 
 app.get("/admin/notifications", requireLogin, (req, res) => {
@@ -3461,8 +3504,8 @@ app.get("/admin/notifications", requireLogin, (req, res) => {
 });
 
 app.get("/admin/agent-zone/deals/new", requireLogin, (req, res) => {
-  if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
-  const agents = getAgents();
+  const run = async () => {
+  const agents = useSupabase ? await sbGetAgents() : getAgents();
   const agentId = Number(req.query.agentId) || (agents[0] && agents[0].id);
   const yq = (req.query.year || "").trim();
   const filterYear =
@@ -3473,8 +3516,13 @@ app.get("/admin/agent-zone/deals/new", requireLogin, (req, res) => {
     agents,
     deal: null,
     selectedAgentId: agentId,
-    dealPrefillList: getPropertiesForDealPrefill(),
+    dealPrefillList: useSupabase ? await sbGetPropertiesForDealPrefill() : getPropertiesForDealPrefill(),
     filterYear
+  });
+  };
+  run().catch((e) => {
+    console.error("deal new:", e);
+    res.status(500).type("text").send("Could not load deal form.");
   });
 });
 
@@ -3482,7 +3530,6 @@ app.post(
   "/admin/agent-zone/deals/new",
   requireLogin,
   (req, res) => {
-    if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
     const {
       agent_id,
       property_name,
@@ -3524,6 +3571,47 @@ app.post(
 
     const askingFmt = "";
     const actualFmt = formatPriceForSave(actual_rental || "");
+
+    if (useSupabase) {
+      (async () => {
+        const { error } = await supabase.from("deals").insert([
+          {
+            agent_id: Number(agent_id),
+            property_name: property_name || "",
+            property_address: property_address || "",
+            deal_date: deal_date || "",
+            lease_period,
+            link_url: link_url || "",
+            asking_rental: askingFmt,
+            actual_rental: actualFmt,
+            escalation_period: "",
+            invoice_total: inv != null && Number.isFinite(inv) ? inv : null,
+            agent_share_percent: Number.isFinite(share) ? share : 50,
+            notes: notes || "",
+            deal_image: null,
+            lease_start_date: lease_start || null,
+            lease_end_date: lease_end || null,
+            deal_amount_type: dealAmountType,
+            is_expected: isExpected,
+            beneficial_occupation_date: benStored || null,
+            lease_commencement_date: commStored,
+            show_on_done_deals: showOnDoneDeals
+          }
+        ]);
+        if (error) throw error;
+        const dealY =
+          deal_date && String(deal_date).trim().length >= 4
+            ? String(deal_date).trim().slice(0, 4)
+            : String(new Date().getFullYear());
+        res.redirect(
+          `/admin/agent-zone?agentId=${Number(agent_id)}&year=${encodeURIComponent(dealY)}`
+        );
+      })().catch((e) => {
+        console.error("deal create:", e);
+        res.status(500).type("text").send("Could not save deal.");
+      });
+      return;
+    }
 
     const insertInfo = db.prepare(`
       INSERT INTO deals (
