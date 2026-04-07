@@ -385,6 +385,12 @@ app.get("/health", (req, res) => {
   res.type("text").send("ok");
 });
 
+// Small request logger for debugging Vercel timeouts/errors.
+app.use((req, res, next) => {
+  req._rid = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  next();
+});
+
 // uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
@@ -4620,6 +4626,20 @@ app.use((err, req, res, next) => {
   }
   console.error(err);
   if (!res.headersSent) {
+    const showDetails =
+      process.env.VERCEL_DEBUG_ERRORS === "1" ||
+      (req &&
+        req.query &&
+        (req.query.debug === "1" || req.query.debug === "true") &&
+        process.env.VERCEL);
+    if (showDetails) {
+      return res
+        .status(500)
+        .type("text")
+        .send(
+          `Error (${req && req._rid ? req._rid : "no-rid"}): ${err && err.message ? err.message : String(err)}`
+        );
+    }
     res.status(500).send("Something went wrong. Check the server terminal for details.");
   }
 });
