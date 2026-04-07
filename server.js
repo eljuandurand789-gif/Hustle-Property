@@ -725,6 +725,50 @@ async function sbGetPropertiesForDealPrefill() {
   return data || [];
 }
 
+async function sbGetListingsForFeaturedPicker() {
+  const { data, error } = await supabase
+    .from("properties")
+    .select("id,name,area,status")
+    .in("status", ["to-let", "for-sale"])
+    .order("area", { ascending: true })
+    .order("name", { ascending: true })
+    .limit(2000);
+  if (error) throw error;
+  return data || [];
+}
+
+async function sbValidateFeaturedPropertyId(raw) {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const { data, error } = await supabase
+    .from("properties")
+    .select("id,status")
+    .eq("id", n)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const st = String(data.status || "").trim();
+  if (st !== "to-let" && st !== "for-sale") return null;
+  return n;
+}
+
+async function sbSetFeaturedHomeSlot(slot, propertyId, featureStyle = "orbit") {
+  const s = Number(slot);
+  if (s !== 1 && s !== 2) throw new Error("Invalid slot");
+  const style =
+    String(featureStyle || "").trim().toLowerCase() === "api" ? "api" : "orbit";
+  const row = {
+    slot: s,
+    property_id: propertyId == null ? null : Number(propertyId),
+    feature_style: style
+  };
+  const { error } = await supabase
+    .from("home_featured_slots")
+    .upsert([row], { onConflict: "slot" });
+  if (error) throw error;
+}
+
 async function sbGetBuildings() {
   const { data, error } = await supabase.from("buildings").select("*").order("name");
   if (error) throw error;
@@ -3978,20 +4022,46 @@ app.post("/admin/agent-zone/deals/:id/delete", requireLogin, (req, res) => {
 });
 
 app.get("/admin/featured-home", requireLogin, (req, res) => {
+  if (useSupabase) {
+    (async () => {
+      const { data: rows, error } = await supabase
+        .from("home_featured_slots")
+        .select("slot, property_id, feature_style")
+        .order("slot", { ascending: true });
+      if (error) throw error;
+      const slot1 = (rows || []).find((r) => Number(r.slot) === 1)?.property_id ?? null;
+      const slot2 = (rows || []).find((r) => Number(r.slot) === 2)?.property_id ?? null;
+      const styleOf = (slot) => {
+        const raw = (rows || []).find((r) => Number(r.slot) === slot)?.feature_style;
+        return String(raw ?? "").trim().toLowerCase() === "api" ? "api" : "orbit";
+      };
+      const slot1_style = styleOf(1);
+      const slot2_style = styleOf(2);
+      res.render("featured-home", {
+        pageTitle: "Featured Listings",
+        listings: await sbGetListingsForFeaturedPicker(),
+        slot1,
+        slot2,
+        slot1_style,
+        slot2_style,
+        success: req.query.success === "1",
+        error: req.query.error === "same" ? "same" : null
+      });
+    })().catch((e) => {
+      console.error("featured-home:", e);
+      res.status(500).type("text").send("Could not load featured listings.");
+    });
+    return;
+  }
+
   const rows = db
-    .prepare(
-      "SELECT slot, property_id, feature_style FROM home_featured_slots ORDER BY slot"
-    )
+    .prepare("SELECT slot, property_id, feature_style FROM home_featured_slots ORDER BY slot")
     .all();
   const slot1 = rows.find((r) => r.slot === 1)?.property_id ?? null;
   const slot2 = rows.find((r) => r.slot === 2)?.property_id ?? null;
   const styleOf = (slot) => {
     const raw = rows.find((r) => r.slot === slot)?.feature_style;
-    return String(raw ?? "")
-      .trim()
-      .toLowerCase() === "api"
-      ? "api"
-      : "orbit";
+    return String(raw ?? "").trim().toLowerCase() === "api" ? "api" : "orbit";
   };
   const slot1_style = styleOf(1);
   const slot2_style = styleOf(2);
@@ -4008,23 +4078,33 @@ app.get("/admin/featured-home", requireLogin, (req, res) => {
 });
 
 app.post("/admin/featured-home", requireLogin, (req, res) => {
+  const st1 =
+    String(req.body.slot1_style || "").trim().toLowerCase() === "api" ? "api" : "orbit";
+  const st2 =
+    String(req.body.slot2_style || "").trim().toLowerCase() === "api" ? "api" : "orbit";
+
+  if (useSupabase) {
+    (async () => {
+      const id1 = await sbValidateFeaturedPropertyId(req.body.slot1);
+      const id2 = await sbValidateFeaturedPropertyId(req.body.slot2);
+      if (id1 != null && id2 != null && id1 === id2) {
+        return res.redirect("/admin/featured-home?error=same");
+      }
+      await sbSetFeaturedHomeSlot(1, id1, st1);
+      await sbSetFeaturedHomeSlot(2, id2, st2);
+      res.redirect("/admin/featured-home?success=1");
+    })().catch((e) => {
+      console.error("featured-home save:", e);
+      res.status(500).type("text").send("Could not save featured listings.");
+    });
+    return;
+  }
+
   const id1 = validateFeaturedPropertyId(req.body.slot1);
   const id2 = validateFeaturedPropertyId(req.body.slot2);
   if (id1 != null && id2 != null && id1 === id2) {
     return res.redirect("/admin/featured-home?error=same");
   }
-  const st1 =
-    String(req.body.slot1_style || "")
-      .trim()
-      .toLowerCase() === "api"
-      ? "api"
-      : "orbit";
-  const st2 =
-    String(req.body.slot2_style || "")
-      .trim()
-      .toLowerCase() === "api"
-      ? "api"
-      : "orbit";
   setFeaturedHomeSlot(1, id1, st1);
   setFeaturedHomeSlot(2, id2, st2);
   res.redirect("/admin/featured-home?success=1");
