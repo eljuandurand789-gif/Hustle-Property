@@ -528,33 +528,50 @@ async function sbGetPublicProperties(filters = {}) {
   if (!effectiveArea && parsed.areaFromQuery) effectiveArea = parsed.areaFromQuery;
   const textForLike = getKeywordLikeTerm(search, selectedArea, parsed);
 
-  let q = supabase
-    .from("properties")
-    .select("*")
-    .in("status", ["to-let", "for-sale"]);
+  async function runQuery(opts) {
+    let q = supabase
+      .from("properties")
+      .select("*")
+      .in("status", ["to-let", "for-sale"]);
 
-  if (effectiveArea) q = q.eq("area", effectiveArea);
-  if (selectedStatus) q = q.eq("status", selectedStatus);
-  if (selectedPropertyType === "office" || selectedPropertyType === "industrial") {
-    q = q.eq("property_type", selectedPropertyType);
-  }
-  if (textForLike) {
-    const like = `%${textForLike}%`;
-    // OR across multiple text columns
-    q = q.or(
-      [
+    if (effectiveArea) q = q.eq("area", effectiveArea);
+    if (selectedStatus) q = q.eq("status", selectedStatus);
+
+    if (
+      !opts.skipPropertyType &&
+      (selectedPropertyType === "office" || selectedPropertyType === "industrial")
+    ) {
+      q = q.eq("property_type", selectedPropertyType);
+    }
+
+    if (textForLike) {
+      const like = `%${textForLike}%`;
+      const clauses = [
         `name.ilike.${like}`,
         `address.ilike.${like}`,
-        `size.ilike.${like}`,
-        `price.ilike.${like}`,
-        `availability.ilike.${like}`,
-        `description.ilike.${like}`,
-        `features.ilike.${like}`
-      ].join(",")
-    );
+        `description.ilike.${like}`
+      ];
+      if (!opts.minimalSearch) {
+        clauses.push(
+          `size.ilike.${like}`,
+          `price.ilike.${like}`,
+          `availability.ilike.${like}`,
+          `features.ilike.${like}`
+        );
+      }
+      q = q.or(clauses.join(","));
+    }
+
+    return await q.order("id", { ascending: false }).limit(200);
   }
 
-  const { data, error } = await q.order("id", { ascending: false }).limit(200);
+  let data;
+  let error;
+  ({ data, error } = await runQuery({ skipPropertyType: false, minimalSearch: false }));
+  if (error && String(error.code) === "42703") {
+    // Missing column in schema — retry a safer query.
+    ({ data, error } = await runQuery({ skipPropertyType: true, minimalSearch: true }));
+  }
   if (error) throw error;
   let rows = data || [];
 
@@ -616,7 +633,7 @@ async function sbGetAdminProperties(area = "") {
   if (ids.length) {
     const { data: imgs, error: imgErr } = await supabase
       .from("property_images")
-      .select("property_id, filename, image_order, id")
+      .select("property_id, filename, storage_path, image_order, id")
       .in("property_id", ids)
       .order("image_order", { ascending: true })
       .order("id", { ascending: true });
