@@ -647,15 +647,32 @@ async function sbGetPublicProperties(filters = {}) {
 
 async function sbGetAdminProperties(area = "") {
   // Admin dashboard only needs summary fields. Avoid heavy joins / large payloads.
-  let q = supabase
-    .from("properties")
-    .select("id,name,area,status,priority_group,property_type,display_image,created_at")
-    .order("id", { ascending: false })
-    .limit(150);
-  if (area) q = q.eq("area", area);
-  const { data, error } = await q;
+  async function run(sel) {
+    let q = supabase
+      .from("properties")
+      .select(sel)
+      .order("id", { ascending: false })
+      .limit(150);
+    if (area) q = q.eq("area", area);
+    return await q;
+  }
+
+  let data;
+  let error;
+  ({ data, error } = await run(
+    "id,name,area,status,priority_group,property_type,display_image,created_at"
+  ));
+  if (error && String(error.code) === "42703") {
+    // Older schema: no priority_group/property_type yet.
+    ({ data, error } = await run("id,name,area,status,display_image,created_at"));
+  }
   if (error) throw error;
   let rows = data || [];
+  rows = rows.map((p) => ({
+    ...p,
+    priority_group: p.priority_group || "medium",
+    property_type: p.property_type || "industrial"
+  }));
   rows = rows.map((p) => enrichPropertyForRender(p, []));
   // Match existing priority sort
   rows.sort((a, b) => {
