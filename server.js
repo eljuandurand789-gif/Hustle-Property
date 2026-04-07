@@ -558,8 +558,12 @@ const uploadPropertyForm = multer({
 function requireLogin(req, res, next) {
   if (useStatelessAdminAuth) {
     const cookies = parseCookies(req);
-    const ok = verifyAdminToken(cookies[ADMIN_COOKIE_NAME]);
-    if (!ok) return res.redirect("/admin/login");
+    const raw = cookies[ADMIN_COOKIE_NAME];
+    const ok = verifyAdminToken(raw);
+    if (!ok) {
+      if (raw) clearAdminCookie(res);
+      return res.redirect("/admin/login");
+    }
     req.adminUsername = ok.username;
     return next();
   }
@@ -3508,7 +3512,10 @@ function parseBrokerId(raw) {
 app.get("/admin/login", (req, res) => {
   if (useStatelessAdminAuth) {
     const cookies = parseCookies(req);
-    if (verifyAdminToken(cookies[ADMIN_COOKIE_NAME])) return res.redirect("/admin");
+    const raw = cookies[ADMIN_COOKIE_NAME];
+    const ok = verifyAdminToken(raw);
+    if (ok) return res.redirect("/admin");
+    if (raw) clearAdminCookie(res);
   } else if (req.session.loggedIn) {
     return res.redirect("/admin");
   }
