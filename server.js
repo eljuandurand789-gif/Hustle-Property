@@ -366,6 +366,10 @@ app.get("/styles.css", (req, res) => {
   res.sendFile(path.join(publicDir, "styles.css"));
 });
 
+// Avoid pointless serverless timeouts for missing favicons.
+app.get("/favicon.ico", (req, res) => res.status(204).end());
+app.get("/favicon.png", (req, res) => res.status(204).end());
+
 // session (saveUninitialized: true so the session cookie is issued before login; login still sets loggedIn)
 app.use(
   session({
@@ -4589,6 +4593,11 @@ app.post("/admin/api/property-images/reorder", requireLogin, (req, res) => {
   run();
 
   res.json({ ok: true });
+});
+
+// Default 404 (prevents serverless timeouts on unknown routes)
+app.use((req, res) => {
+  res.status(404).type("text").send("Not found");
 });
 
 // START
