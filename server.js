@@ -644,37 +644,17 @@ async function sbGetPublicProperties(filters = {}) {
 }
 
 async function sbGetAdminProperties(area = "") {
-  let q = supabase.from("properties").select("*");
+  // Admin dashboard only needs summary fields. Avoid heavy joins / large payloads.
+  let q = supabase
+    .from("properties")
+    .select("id,name,area,status,priority_group,property_type,display_image,created_at")
+    .order("id", { ascending: false })
+    .limit(150);
   if (area) q = q.eq("area", area);
-  const { data, error } = await q.order("id", { ascending: false }).limit(500);
+  const { data, error } = await q;
   if (error) throw error;
   let rows = data || [];
-  const ids = rows.map((r) => r.id).filter((n) => n != null);
-  const imagesByProp = new Map();
-  if (ids.length) {
-    async function run(sel) {
-      return await supabase
-        .from("property_images")
-        .select(sel)
-        .in("property_id", ids)
-        .order("image_order", { ascending: true })
-        .order("id", { ascending: true });
-    }
-    let imgs;
-    let imgErr;
-    ({ data: imgs, error: imgErr } = await run("property_id, storage_path, image_order, id"));
-    if (imgErr && String(imgErr.code) === "42703") {
-      ({ data: imgs, error: imgErr } = await run("property_id, filename, image_order, id"));
-    }
-    if (imgErr) throw imgErr;
-    (imgs || []).forEach((img) => {
-      const normalized = { ...img, filename: img.storage_path || img.filename };
-      const arr = imagesByProp.get(img.property_id) || [];
-      arr.push(normalized);
-      imagesByProp.set(img.property_id, arr);
-    });
-  }
-  rows = rows.map((p) => enrichPropertyForRender(p, imagesByProp.get(p.id) || []));
+  rows = rows.map((p) => enrichPropertyForRender(p, []));
   // Match existing priority sort
   rows.sort((a, b) => {
     const rank = (x) =>

@@ -46,10 +46,10 @@
     <section class="property-grid admin-grid-small">
       <% properties.forEach(property => { %>
         <article class="property-card admin-card-small">
-          <% if (property.cardImage || property.displayImage) { %>
+          <% if (property.cardImageUrl || property.displayImageUrl || property.cardImage || property.displayImage) { %>
             <div class="admin-card-image-wrap">
               <img
-                src="/uploads/<%= property.cardImage || property.displayImage %>"
+                src="<%= property.cardImageUrl || property.displayImageUrl || ('/uploads/' + (property.cardImage || property.displayImage)) %>"
                 alt="<%= property.name %>"
                 class="admin-card-image-small"
               >
