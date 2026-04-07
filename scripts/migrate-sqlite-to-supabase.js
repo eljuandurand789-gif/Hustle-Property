@@ -2,7 +2,7 @@
  * One-time migration:
  * - Reads local SQLite (properties.db + property_images)
  * - Uploads files from uploads/ to Supabase Storage bucket
- * - Inserts rows into Supabase Postgres tables: properties + property_images
+ * - Inserts rows into Supabase Postgres tables: properties + property_images + agents + deals + agent_payouts
  *
  * Usage (PowerShell):
  *   $env:SUPABASE_URL="https://<ref>.supabase.co"
@@ -153,18 +153,32 @@ function safeName(s) {
     .slice(0, 120);
 }
 
+function safeSlug(s) {
+  const base = String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return base || `agent-${Date.now()}`;
+}
+
 async function uploadFile(localFilename, destPath) {
   const full = path.join(uploadsDir, localFilename);
   if (!fs.existsSync(full)) return null;
   const buf = fs.readFileSync(full);
+  const lower = localFilename.toLowerCase();
   const contentType =
-    localFilename.toLowerCase().endsWith(".png")
+    lower.endsWith(".png")
       ? "image/png"
-      : localFilename.toLowerCase().endsWith(".webp")
+      : lower.endsWith(".webp")
         ? "image/webp"
-        : localFilename.toLowerCase().endsWith(".gif")
+        : lower.endsWith(".gif")
           ? "image/gif"
-          : "image/jpeg";
+          : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+            ? "image/jpeg"
+            : "application/octet-stream";
 
   const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(destPath, buf, {
     contentType,
@@ -192,6 +206,9 @@ async function main() {
   const images = db
     .prepare("SELECT * FROM property_images ORDER BY property_id, image_order, id")
     .all();
+  const agents = db.prepare("SELECT * FROM agents ORDER BY id").all();
+  const deals = db.prepare("SELECT * FROM deals ORDER BY id").all();
+  const payouts = db.prepare("SELECT * FROM agent_payouts ORDER BY id").all();
   const imgsByProp = new Map();
   for (const img of images) {
     const arr = imgsByProp.get(img.property_id) || [];
@@ -200,8 +217,40 @@ async function main() {
   }
 
   console.log(`Found ${props.length} properties in SQLite.`);
+  console.log(`Found ${agents.length} agents in SQLite.`);
+  console.log(`Found ${deals.length} deals in SQLite.`);
+  console.log(`Found ${payouts.length} agent payouts in SQLite.`);
 
   const skipExisting = process.argv.includes("--skip-existing") || true;
+
+  // 1) Agents: build SQLite id -> Supabase id map (use slug unique)
+  const agentIdMap = new Map();
+  for (const a of agents) {
+    const slug = a.slug ? String(a.slug).trim() : safeSlug(a.name);
+    const name = a.name ? String(a.name).trim() : slug;
+    // eslint-disable-next-line no-await-in-loop
+    const { data: existing, error: exErr } = await supabase
+      .from("agents")
+      .select("id,slug")
+      .eq("slug", slug)
+      .limit(1)
+      .maybeSingle();
+    if (exErr && String(exErr.code) !== "42703") throw exErr;
+    let sbId = existing && existing.id ? existing.id : null;
+    if (!sbId) {
+      // eslint-disable-next-line no-await-in-loop
+      const { data: created } = await insertWithDropUnknownColumns(
+        "agents",
+        { name, slug },
+        "id"
+      );
+      sbId = created.id;
+      console.log(`Migrated SQLite agent ${a.id} → Supabase ${sbId} (${slug})`);
+    } else {
+      console.log(`Skip existing agent (already in Supabase): SQLite ${a.id} → Supabase ${sbId} (${slug})`);
+    }
+    agentIdMap.set(a.id, sbId);
+  }
 
   for (const p of props) {
     if (skipExisting) {
@@ -309,6 +358,136 @@ async function main() {
     }
 
     console.log(`Migrated SQLite property ${p.id} → Supabase ${newId}`);
+  }
+
+  // 2) Deals (use agent_id mapping). Upload deal_image if present.
+  for (const d of deals) {
+    const sbAgentId = agentIdMap.get(d.agent_id);
+    if (!sbAgentId) {
+      console.log(`Skip deal ${d.id}: unknown agent_id ${d.agent_id}`);
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+
+    if (skipExisting) {
+      // Best-effort de-dupe: match by agent_id + property_address + deal_date + invoice_total (when present)
+      let q = supabase
+        .from("deals")
+        .select("id")
+        .eq("agent_id", sbAgentId)
+        .eq("property_address", d.property_address || "");
+      if (d.deal_date && String(d.deal_date).trim()) q = q.eq("deal_date", String(d.deal_date).trim());
+      if (d.invoice_total != null && d.invoice_total !== "") q = q.eq("invoice_total", Number(d.invoice_total));
+      // eslint-disable-next-line no-await-in-loop
+      const { data: existing, error: exErr } = await q.limit(1).maybeSingle();
+      if (exErr && String(exErr.code) !== "42703") throw exErr;
+      if (existing && existing.id) {
+        console.log(`Skip existing deal (already in Supabase): SQLite ${d.id} → Supabase ${existing.id}`);
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+    }
+
+    const insertRow = {
+      agent_id: sbAgentId,
+      property_name: d.property_name || null,
+      property_address: d.property_address || "",
+      deal_date: d.deal_date || null,
+      lease_period: d.lease_period || null,
+      link_url: d.link_url || null,
+      asking_rental: d.asking_rental || null,
+      actual_rental: d.actual_rental || null,
+      escalation_period: d.escalation_period || null,
+      invoice_total:
+        d.invoice_total == null || d.invoice_total === "" ? null : Number(d.invoice_total),
+      agent_share_percent:
+        d.agent_share_percent == null || d.agent_share_percent === ""
+          ? 50
+          : Number(d.agent_share_percent),
+      notes: d.notes || null,
+      deal_image: null,
+      lease_start_date: d.lease_start_date || null,
+      lease_end_date: d.lease_end_date || null,
+      deal_amount_type: d.deal_amount_type || "net_before_tax",
+      is_expected: d.is_expected == null ? 0 : Number(d.is_expected) ? 1 : 0,
+      beneficial_occupation_date: d.beneficial_occupation_date || null,
+      lease_commencement_date: d.lease_commencement_date || null,
+      map_latitude:
+        d.map_latitude == null || d.map_latitude === "" ? null : Number(d.map_latitude),
+      map_longitude:
+        d.map_longitude == null || d.map_longitude === "" ? null : Number(d.map_longitude),
+      show_on_done_deals:
+        d.show_on_done_deals == null ? 0 : Number(d.show_on_done_deals) ? 1 : 0
+    };
+
+    // eslint-disable-next-line no-await-in-loop
+    const { data: created, dropped: droppedCols } = await insertWithDropUnknownColumns(
+      "deals",
+      insertRow,
+      "id"
+    );
+    if (droppedCols.length) {
+      console.log(`Note: deals columns missing in Supabase (skipped): ${droppedCols.join(", ")}`);
+    }
+    const sbDealId = created.id;
+
+    // Upload deal image if present
+    if (d.deal_image) {
+      const ext = path.extname(String(d.deal_image)) || ".jpg";
+      const dest = `deals/${sbDealId}/deal-${safeName(d.property_address || d.property_name || "deal")}${ext}`;
+      // eslint-disable-next-line no-await-in-loop
+      const uploaded = await uploadFile(String(d.deal_image), dest);
+      if (uploaded) {
+        // eslint-disable-next-line no-await-in-loop
+        await updateWithDropUnknownColumns("deals", "id", sbDealId, { deal_image: uploaded });
+      }
+    }
+
+    console.log(`Migrated SQLite deal ${d.id} → Supabase ${sbDealId}`);
+  }
+
+  // 3) Agent payouts
+  for (const p of payouts) {
+    const sbAgentId = agentIdMap.get(p.agent_id);
+    if (!sbAgentId) {
+      console.log(`Skip payout ${p.id}: unknown agent_id ${p.agent_id}`);
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+
+    if (skipExisting) {
+      let q = supabase
+        .from("agent_payouts")
+        .select("id")
+        .eq("agent_id", sbAgentId)
+        .eq("payout_date", p.payout_date || "");
+      if (p.amount != null && p.amount !== "") q = q.eq("amount", Number(p.amount));
+      // eslint-disable-next-line no-await-in-loop
+      const { data: existing, error: exErr } = await q.limit(1).maybeSingle();
+      if (exErr && String(exErr.code) !== "42703") throw exErr;
+      if (existing && existing.id) {
+        console.log(`Skip existing payout (already in Supabase): SQLite ${p.id} → Supabase ${existing.id}`);
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+    }
+
+    const row = {
+      agent_id: sbAgentId,
+      payout_date: p.payout_date || "",
+      amount: p.amount == null || p.amount === "" ? 0 : Number(p.amount),
+      notes: p.notes || null
+    };
+    // eslint-disable-next-line no-await-in-loop
+    const { data: created, dropped } = await insertWithDropUnknownColumns(
+      "agent_payouts",
+      row,
+      "id"
+    );
+    if (dropped.length) {
+      console.log(`Note: agent_payouts columns missing in Supabase (skipped): ${dropped.join(", ")}`);
+    }
+    console.log(`Migrated SQLite payout ${p.id} → Supabase ${created.id}`);
   }
 
   console.log("Done.");
