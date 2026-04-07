@@ -3528,12 +3528,18 @@ app.post("/admin/login", (req, res) => {
   if (useSupabase) {
     const expectedUser = String(process.env.ADMIN_USERNAME || "admin").trim();
     const expectedPass = String(process.env.ADMIN_PASSWORD || "").trim();
+    const expectedPass2 = String(process.env.ADMIN_PASSWORD_2 || "").trim();
+    if (!expectedPass && !expectedPass2) {
+      return res.render("login", {
+        error:
+          "Admin login is not configured for this deployment. Set ADMIN_USERNAME and ADMIN_PASSWORD in Vercel Environment Variables (make sure it’s added for the correct environment: Production + Preview)."
+      });
+    }
     const ok =
       username &&
       password &&
       username === expectedUser &&
-      expectedPass &&
-      password === expectedPass;
+      ((expectedPass && password === expectedPass) || (expectedPass2 && password === expectedPass2));
     if (!ok) {
       return res.render("login", { error: "Invalid username or password" });
     }
