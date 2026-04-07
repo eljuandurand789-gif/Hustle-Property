@@ -701,6 +701,57 @@ async function sbUploadMulterFile(file, storagePath) {
   return p;
 }
 
+function getMissingColumnFromPg42703Message(msg) {
+  const m = String(msg || "").match(/column\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s+does not exist/i);
+  return m ? m[2] : null;
+}
+
+async function sbInsertWithDropUnknownColumns(table, row, returning = "id") {
+  const payload = JSON.parse(JSON.stringify(row || {}));
+  const dropped = [];
+  for (let tries = 0; tries < 30; tries += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { data, error } = await supabase.from(table).insert([payload]).select(returning).single();
+    if (!error) return { data, dropped };
+    const missing =
+      String(error.code) === "42703"
+        ? getMissingColumnFromPg42703Message(error.message)
+        : error.code === "PGRST204"
+          ? (String(error.message || "").match(/Could not find the '([^']+)' column/i) || [])[1]
+          : null;
+    if (missing && Object.prototype.hasOwnProperty.call(payload, missing)) {
+      dropped.push(missing);
+      delete payload[missing];
+      continue;
+    }
+    throw error;
+  }
+  throw new Error(`Too many retries inserting into ${table}. Dropped: ${dropped.join(", ")}`);
+}
+
+async function sbUpdateWithDropUnknownColumns(table, matchCol, matchVal, row) {
+  const payload = JSON.parse(JSON.stringify(row || {}));
+  const dropped = [];
+  for (let tries = 0; tries < 30; tries += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { error } = await supabase.from(table).update(payload).eq(matchCol, matchVal);
+    if (!error) return { dropped };
+    const missing =
+      String(error.code) === "42703"
+        ? getMissingColumnFromPg42703Message(error.message)
+        : error.code === "PGRST204"
+          ? (String(error.message || "").match(/Could not find the '([^']+)' column/i) || [])[1]
+          : null;
+    if (missing && Object.prototype.hasOwnProperty.call(payload, missing)) {
+      dropped.push(missing);
+      delete payload[missing];
+      continue;
+    }
+    throw error;
+  }
+  throw new Error(`Too many retries updating ${table}. Dropped: ${dropped.join(", ")}`);
+}
+
 async function sbGetAgents() {
   const { data, error } = await supabase.from("agents").select("*").order("name");
   if (error) throw error;
@@ -3232,6 +3283,36 @@ app.get("/api/map-properties", (req, res) => {
       typeof req.query.area === "string" ? req.query.area.trim() : "";
     const allowedAreas = new Set(["Maitland", "Paarden Eiland"]);
     const areaFilter = allowedAreas.has(areaParam) ? areaParam : "";
+
+    if (useSupabase) {
+      (async () => {
+        let q = supabase
+          .from("properties")
+          .select("id,name,address,area,latitude,longitude,property_type")
+          .in("status", ["to-let", "for-sale"]);
+        if (areaFilter) q = q.eq("area", areaFilter);
+        const { data: rows, error } = await q.limit(500);
+        if (error) throw error;
+        const out = (rows || []).map((row) => {
+          const g = coordsForMapRow(row);
+          return {
+            id: row.id,
+            name: row.name,
+            address: row.address || "",
+            area: row.area || "",
+            typeLabel: formatPropertyTypeLabel(row.property_type),
+            lat: row.latitude != null ? Number(row.latitude) : g.lat,
+            lng: row.longitude != null ? Number(row.longitude) : g.lng,
+            thumb: null,
+            url: `/property/${row.id}`
+          };
+        });
+        res.json(out);
+      })().catch((err) => {
+        res.status(500).json({ error: err.message || "Map data error" });
+      });
+      return;
+    }
 
     let sql = `
         SELECT id, name, address, area, display_image, latitude, longitude, property_type
