@@ -1,6 +1,7 @@
 const express = require("express");
 const http = require("http");
 const os = require("os");
+const crypto = require("crypto");
 const session = require("express-session");
 const multer = require("multer");
 const path = require("path");
@@ -347,6 +348,84 @@ app.set("views", viewsDir);
 app.use(express.urlencoded({ extended: true, limit: "8mb" }));
 app.use(express.json({ limit: "2mb" }));
 
+const useStatelessAdminAuth = Boolean(process.env.VERCEL) || useSupabase;
+const ADMIN_COOKIE_NAME = "hp_admin";
+const ADMIN_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function parseCookies(req) {
+  const header = req.headers && req.headers.cookie ? String(req.headers.cookie) : "";
+  const out = {};
+  header.split(";").forEach((part) => {
+    const s = part.trim();
+    if (!s) return;
+    const idx = s.indexOf("=");
+    if (idx === -1) return;
+    const k = s.slice(0, idx).trim();
+    const v = s.slice(idx + 1).trim();
+    out[k] = decodeURIComponent(v);
+  });
+  return out;
+}
+
+function signAdminToken(username) {
+  const ts = Date.now();
+  const base = `${username}.${ts}`;
+  const secret = String(process.env.SESSION_SECRET || "hustle-property-secret-key");
+  const sig = crypto.createHmac("sha256", secret).update(base).digest("hex");
+  return `${base}.${sig}`;
+}
+
+function verifyAdminToken(token) {
+  const raw = String(token || "");
+  const parts = raw.split(".");
+  if (parts.length < 3) return null;
+  const sig = parts.pop();
+  const ts = Number(parts.pop());
+  const username = parts.join(".");
+  if (!username || !Number.isFinite(ts)) return null;
+  if (Date.now() - ts > ADMIN_COOKIE_MAX_AGE_MS) return null;
+  const base = `${username}.${ts}`;
+  const secret = String(process.env.SESSION_SECRET || "hustle-property-secret-key");
+  const expected = crypto.createHmac("sha256", secret).update(base).digest("hex");
+  try {
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return null;
+    if (!crypto.timingSafeEqual(a, b)) return null;
+  } catch {
+    return null;
+  }
+  return { username };
+}
+
+function setAdminCookie(res, username) {
+  const token = signAdminToken(username);
+  const secure = Boolean(process.env.VERCEL);
+  const maxAge = Math.floor(ADMIN_COOKIE_MAX_AGE_MS / 1000);
+  const parts = [
+    `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`
+  ];
+  if (secure) parts.push("Secure");
+  res.setHeader("Set-Cookie", parts.join("; "));
+}
+
+function clearAdminCookie(res) {
+  const secure = Boolean(process.env.VERCEL);
+  const parts = [
+    `${ADMIN_COOKIE_NAME}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0"
+  ];
+  if (secure) parts.push("Secure");
+  res.setHeader("Set-Cookie", parts.join("; "));
+}
+
 app.use(express.static(publicDir));
 app.use("/uploads", express.static(uploadsDir));
 
@@ -441,10 +520,15 @@ const uploadPropertyForm = multer({
 
 // helpers
 function requireLogin(req, res, next) {
-  if (!req.session.loggedIn) {
-    return res.redirect("/admin/login");
+  if (useStatelessAdminAuth) {
+    const cookies = parseCookies(req);
+    const ok = verifyAdminToken(cookies[ADMIN_COOKIE_NAME]);
+    if (!ok) return res.redirect("/admin/login");
+    req.adminUsername = ok.username;
+    return next();
   }
-  next();
+  if (!req.session.loggedIn) return res.redirect("/admin/login");
+  return next();
 }
 
 /** Accepts YouTube watch / embed / shorts / youtu.be URL or an 11-character id; returns id or null. */
@@ -3379,7 +3463,10 @@ function parseBrokerId(raw) {
 
 // LOGIN — username + password against `admins` table
 app.get("/admin/login", (req, res) => {
-  if (req.session.loggedIn) {
+  if (useStatelessAdminAuth) {
+    const cookies = parseCookies(req);
+    if (verifyAdminToken(cookies[ADMIN_COOKIE_NAME])) return res.redirect("/admin");
+  } else if (req.session.loggedIn) {
     return res.redirect("/admin");
   }
   res.render("login", { error: null });
@@ -3400,6 +3487,10 @@ app.post("/admin/login", (req, res) => {
     if (!ok) {
       return res.render("login", { error: "Invalid username or password" });
     }
+    if (useStatelessAdminAuth) {
+      setAdminCookie(res, expectedUser);
+      return res.redirect("/admin");
+    }
     req.session.loggedIn = true;
     req.session.adminUsername = expectedUser;
     return req.session.save((err) => {
@@ -3416,6 +3507,10 @@ app.post("/admin/login", (req, res) => {
     .prepare("SELECT id, username FROM admins WHERE username = ? AND password = ?")
     .get(username, password);
   if (!admin) return res.render("login", { error: "Invalid username or password" });
+  if (useStatelessAdminAuth) {
+    setAdminCookie(res, admin.username);
+    return res.redirect("/admin");
+  }
   req.session.loggedIn = true;
   req.session.adminId = admin.id;
   req.session.adminUsername = admin.username;
@@ -3450,6 +3545,10 @@ app.get("/admin/login/quick", (req, res) => {
       return res.status(403).type("text").send("Invalid quick login token.");
     }
   }
+  if (useStatelessAdminAuth) {
+    setAdminCookie(res, "quick");
+    return res.redirect("/admin");
+  }
   req.session.loggedIn = true;
   delete req.session.adminId;
   delete req.session.adminUsername;
@@ -3463,6 +3562,10 @@ app.get("/admin/login/quick", (req, res) => {
 });
 
 app.post("/admin/logout", (req, res) => {
+  if (useStatelessAdminAuth) {
+    clearAdminCookie(res);
+    return res.redirect("/admin/login");
+  }
   req.session.destroy(() => {
     res.redirect("/admin/login");
   });
@@ -3517,6 +3620,11 @@ app.get("/admin", requireLogin, async (req, res, next) => {
 // Safety: some cached HTML or mis-posts can hit POST /admin (should be GET).
 // Avoid 404s by redirecting to the correct page.
 app.post("/admin", (req, res) => {
+  if (useStatelessAdminAuth) {
+    const cookies = parseCookies(req);
+    if (verifyAdminToken(cookies[ADMIN_COOKIE_NAME])) return res.redirect("/admin");
+    return res.redirect("/admin/login");
+  }
   if (req.session && req.session.loggedIn) return res.redirect("/admin");
   return res.redirect("/admin/login");
 });
