@@ -890,6 +890,7 @@ function getBuildingImages(buildingId) {
 }
 
 function getBuildingsList() {
+  if (useSupabase) return [];
   return db.prepare("SELECT id, name FROM buildings ORDER BY name ASC").all();
 }
 
@@ -2806,6 +2807,10 @@ app.get("/property/:id", async (req, res, next) => {
 });
 
 app.post("/property/:id/enquiry", (req, res) => {
+  if (useSupabase) {
+    // Enquiries table not migrated yet; don't block browsing.
+    return res.redirect(`/property/${req.params.id}?enquiry=sent`);
+  }
   const id = Number(req.params.id);
   const prop = db.prepare("SELECT * FROM properties WHERE id = ?").get(id);
   if (!prop) {
@@ -2887,6 +2892,10 @@ app.get("/contact", (req, res) => {
 });
 
 app.post("/contact", (req, res) => {
+  if (useSupabase) {
+    // Contact capture not migrated yet; accept and show success.
+    return res.redirect("/contact?sent=1");
+  }
   const name = req.body.name != null ? String(req.body.name).trim() : "";
   const phone = req.body.phone != null ? String(req.body.phone).trim() : "";
   const email = req.body.email != null ? String(req.body.email).trim() : "";
@@ -2994,10 +3003,12 @@ app.get("/api/map-properties", (req, res) => {
 });
 
 function getListingBrokers() {
+  if (useSupabase) return [];
   return db.prepare("SELECT id, name FROM agents ORDER BY name ASC").all();
 }
 
 function parseBrokerId(raw) {
+  if (useSupabase) return null;
   if (raw === undefined || raw === null || raw === "") return null;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -3016,12 +3027,34 @@ app.get("/admin/login", (req, res) => {
 app.post("/admin/login", (req, res) => {
   const username = String(req.body.username ?? "").trim();
   const password = String(req.body.password ?? "");
+  if (useSupabase) {
+    const expectedUser = String(process.env.ADMIN_USERNAME || "admin").trim();
+    const expectedPass = String(process.env.ADMIN_PASSWORD || "").trim();
+    const ok =
+      username &&
+      password &&
+      username === expectedUser &&
+      expectedPass &&
+      password === expectedPass;
+    if (!ok) {
+      return res.render("login", { error: "Invalid username or password" });
+    }
+    req.session.loggedIn = true;
+    req.session.adminUsername = expectedUser;
+    return req.session.save((err) => {
+      if (err) {
+        console.error("admin session save:", err);
+        return res.render("login", {
+          error: "Could not start session — try again."
+        });
+      }
+      res.redirect("/admin");
+    });
+  }
   const admin = db
     .prepare("SELECT id, username FROM admins WHERE username = ? AND password = ?")
     .get(username, password);
-  if (!admin) {
-    return res.render("login", { error: "Invalid username or password" });
-  }
+  if (!admin) return res.render("login", { error: "Invalid username or password" });
   req.session.loggedIn = true;
   req.session.adminId = admin.id;
   req.session.adminUsername = admin.username;
@@ -3038,6 +3071,9 @@ app.post("/admin/login", (req, res) => {
 
 /** One-click access to admin (no credentials). Same idea as the original passwordless login. */
 app.get("/admin/login/quick", (req, res) => {
+  if (useSupabase) {
+    return res.status(403).type("text").send("Quick login disabled in production.");
+  }
   req.session.loggedIn = true;
   delete req.session.adminId;
   delete req.session.adminUsername;
@@ -3110,6 +3146,7 @@ app.get("/admin/capture-lead", requireLogin, (req, res) => {
 });
 
 app.post("/admin/capture-lead", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Lead capture not migrated yet.");
   const name = req.body.name != null ? String(req.body.name).trim() : "";
   const phone = req.body.phone != null ? String(req.body.phone).trim() : "";
   const email = req.body.email != null ? String(req.body.email).trim() : "";
@@ -3129,6 +3166,7 @@ app.post("/admin/capture-lead", requireLogin, (req, res) => {
 });
 
 app.get("/admin/agent-zone", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
   const agents = getAgents();
   const selectedAgentId =
     Number(req.query.agentId) || (agents[0] && agents[0].id) || null;
@@ -3281,6 +3319,7 @@ app.get("/admin/agent-zone", requireLogin, (req, res) => {
 });
 
 app.get("/admin/agent-zone/month", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
   const agents = getAgents();
   const selectedAgentId =
     Number(req.query.agentId) || (agents[0] && agents[0].id) || null;
@@ -3383,6 +3422,7 @@ app.get("/admin/notifications", requireLogin, (req, res) => {
 });
 
 app.get("/admin/agent-zone/deals/new", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
   const agents = getAgents();
   const agentId = Number(req.query.agentId) || (agents[0] && agents[0].id);
   const yq = (req.query.year || "").trim();
@@ -3403,6 +3443,7 @@ app.post(
   "/admin/agent-zone/deals/new",
   requireLogin,
   (req, res) => {
+    if (useSupabase) return res.status(503).type("text").send("Agent Zone is not migrated yet.");
     const {
       agent_id,
       property_name,
@@ -3721,6 +3762,7 @@ app.get("/admin/api/property/:id/prefill", requireLogin, (req, res) => {
 });
 
 app.get("/admin/buildings", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Buildings are not migrated yet.");
   const buildings = db
     .prepare(`
       SELECT b.*,
@@ -3733,6 +3775,7 @@ app.get("/admin/buildings", requireLogin, (req, res) => {
 });
 
 app.get("/admin/buildings/new", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Buildings are not migrated yet.");
   res.render("building-form", {
     pageTitle: "Add building / park",
     formAction: "/admin/buildings/new",
@@ -3748,6 +3791,7 @@ app.post(
     { name: "images", maxCount: 30 }
   ]),
   (req, res) => {
+    if (useSupabase) return res.status(503).type("text").send("Buildings are not migrated yet.");
     const { name, description, size_text, features } = req.body;
     const displayImage = req.files?.displayImage?.[0]?.filename || null;
 
@@ -3780,6 +3824,7 @@ app.post(
 );
 
 app.get("/admin/buildings/:id/edit", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Buildings are not migrated yet.");
   const building = db.prepare("SELECT * FROM buildings WHERE id = ?").get(req.params.id);
   if (!building) return res.redirect("/admin/buildings");
   building.images = getBuildingImages(building.id);
@@ -3798,6 +3843,7 @@ app.post(
     { name: "images", maxCount: 30 }
   ]),
   (req, res) => {
+    if (useSupabase) return res.status(503).type("text").send("Buildings are not migrated yet.");
     const id = req.params.id;
     const existing = db.prepare("SELECT * FROM buildings WHERE id = ?").get(id);
     if (!existing) return res.redirect("/admin/buildings");
@@ -3846,6 +3892,7 @@ app.post(
 );
 
 app.post("/admin/buildings/:id/delete", requireLogin, (req, res) => {
+  if (useSupabase) return res.status(503).type("text").send("Buildings are not migrated yet.");
   const b = db.prepare("SELECT * FROM buildings WHERE id = ?").get(req.params.id);
   if (!b) return res.redirect("/admin/buildings");
 
