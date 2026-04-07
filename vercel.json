@@ -1,13 +1,14 @@
 {
   "version": 2,
   "installCommand": "npm install --omit=dev",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
-  ],
   "functions": {
     "api/index.js": {
       "memory": 1024,
       "maxDuration": 30
     }
-  }
+  },
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/api/index.js" }
+  ]
 }
