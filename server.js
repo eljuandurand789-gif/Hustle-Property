@@ -3334,8 +3334,23 @@ app.post("/admin/login", (req, res) => {
 
 /** One-click access to admin (no credentials). Same idea as the original passwordless login. */
 app.get("/admin/login/quick", (req, res) => {
-  if (useSupabase) {
-    return res.status(403).type("text").send("Quick login disabled in production.");
+  // Safer "quick login": require a token in production.
+  // Set QUICK_LOGIN_TOKEN in Vercel env vars, then visit /admin/login/quick?t=YOUR_TOKEN
+  if (process.env.VERCEL || useSupabase) {
+    const token = String(process.env.QUICK_LOGIN_TOKEN || "").trim();
+    const provided =
+      (req.query && (req.query.t || req.query.token)) != null
+        ? String(req.query.t || req.query.token).trim()
+        : "";
+    if (!token) {
+      return res
+        .status(403)
+        .type("text")
+        .send("Quick login is disabled. Set QUICK_LOGIN_TOKEN to enable it.");
+    }
+    if (!provided || provided !== token) {
+      return res.status(403).type("text").send("Invalid quick login token.");
+    }
   }
   req.session.loggedIn = true;
   delete req.session.adminId;
