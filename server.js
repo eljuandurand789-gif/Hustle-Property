@@ -44,12 +44,26 @@ if (!fs.existsSync(uploadsDir)) {
 // Supabase (optional; used when env vars are set)
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_SECRET_KEY =
-  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  process.env.SUPABASE_SECRET_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_KEY ||
+  process.env.SUPABASE_SECRET ||
+  process.env.SUPABASE_KEY ||
+  "";
 const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "property-images";
 const useSupabase = Boolean(SUPABASE_URL && SUPABASE_SECRET_KEY);
+function fetchWithTimeout(url, init) {
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.SUPABASE_FETCH_TIMEOUT_MS) || 8000;
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...(init || {}), signal: controller.signal }).finally(() =>
+    clearTimeout(t)
+  );
+}
 const supabase = useSupabase
   ? createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false }
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: fetchWithTimeout }
     })
   : null;
 
@@ -333,6 +347,19 @@ app.use(express.json({ limit: "2mb" }));
 
 app.use(express.static(publicDir));
 app.use("/uploads", express.static(uploadsDir));
+
+// Fail fast on Vercel if Supabase isn't configured.
+// This avoids cold-start hangs on native SQLite and makes misconfig obvious.
+if (process.env.VERCEL && !useSupabase) {
+  app.use((req, res) => {
+    res
+      .status(500)
+      .type("text")
+      .send(
+        "Backend not configured: set SUPABASE_URL and SUPABASE_SECRET_KEY in Vercel Environment Variables, then redeploy."
+      );
+  });
+}
 
 // direct file routes
 app.get("/styles.css", (req, res) => {
