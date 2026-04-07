@@ -2851,8 +2851,42 @@ app.get("/property/:id", async (req, res, next) => {
 
 app.post("/property/:id/enquiry", (req, res) => {
   if (useSupabase) {
-    // Enquiries table not migrated yet; don't block browsing.
-    return res.redirect(`/property/${req.params.id}?enquiry=sent`);
+    (async () => {
+      const id = Number(req.params.id);
+      const { data: prop, error: propErr } = await supabase
+        .from("properties")
+        .select("id,name,address")
+        .eq("id", id)
+        .maybeSingle();
+      if (propErr) throw propErr;
+      if (!prop) return res.status(404).type("text").send("Property not found");
+
+      const name = req.body.name != null ? String(req.body.name).trim() : "";
+      const phone = req.body.phone != null ? String(req.body.phone).trim() : "";
+      const email = req.body.email != null ? String(req.body.email).trim() : "";
+      const message = req.body.message != null ? String(req.body.message).trim() : "";
+      if (!name || !phone) {
+        return res.status(400).type("text").send("Name and phone are required.");
+      }
+
+      const { error } = await supabase.from("property_enquiries").insert([
+        {
+          property_id: id,
+          property_label: prop.name || null,
+          property_address: prop.address || null,
+          enquirer_name: name,
+          phone,
+          email: email || null,
+          message: message || null
+        }
+      ]);
+      if (error) throw error;
+      res.redirect(`/property/${id}?enquiry=sent`);
+    })().catch((e) => {
+      console.error("supabase enquiry:", e);
+      res.status(500).type("text").send("Could not send enquiry.");
+    });
+    return;
   }
   const id = Number(req.params.id);
   const prop = db.prepare("SELECT * FROM properties WHERE id = ?").get(id);
@@ -2936,8 +2970,30 @@ app.get("/contact", (req, res) => {
 
 app.post("/contact", (req, res) => {
   if (useSupabase) {
-    // Contact capture not migrated yet; accept and show success.
-    return res.redirect("/contact?sent=1");
+    (async () => {
+      const name = req.body.name != null ? String(req.body.name).trim() : "";
+      const phone = req.body.phone != null ? String(req.body.phone).trim() : "";
+      const email = req.body.email != null ? String(req.body.email).trim() : "";
+      const message = req.body.message != null ? String(req.body.message).trim() : "";
+      if (!name || !phone) return res.redirect("/contact?error=1");
+      const { error } = await supabase.from("property_enquiries").insert([
+        {
+          property_id: null,
+          property_label: "General contact",
+          property_address: null,
+          enquirer_name: name,
+          phone,
+          email: email || null,
+          message: message || null
+        }
+      ]);
+      if (error) throw error;
+      res.redirect("/contact?sent=1");
+    })().catch((e) => {
+      console.error("supabase contact:", e);
+      res.redirect("/contact?error=1");
+    });
+    return;
   }
   const name = req.body.name != null ? String(req.body.name).trim() : "";
   const phone = req.body.phone != null ? String(req.body.phone).trim() : "";
