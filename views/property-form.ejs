@@ -323,7 +323,7 @@
                     >
 
                       <img
-                        src="/uploads/<%= image.filename %>"
+                        src="<%= image.url ? image.url : ('/uploads/' + image.filename) %>"
                         alt="Property Image"
                         class="image-order-preview"
                         draggable="false"
@@ -366,8 +366,24 @@
         <div class="form-group full-width property-video-field">
           <label>Property video (optional)</label>
           <p class="field-hint">
-            Shown on the public property page. MP4 or WebM works in most browsers; keep files under ~200 MB.
+            <strong>Recommended for production:</strong> paste a <strong>YouTube</strong> link (watch, Shorts, or youtu.be). No file upload limits, works on Vercel.
+            Or upload MP4/WebM for local hosting (large files; on serverless hosting uploads may not persist).
           </p>
+          <label for="youtube_url">YouTube URL</label>
+          <input
+            type="text"
+            id="youtube_url"
+            name="youtube_url"
+            class="text-input"
+            autocomplete="off"
+            placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"
+            value="<%
+              if (property && property.youtube_video_id) {
+                %>https://www.youtube.com/watch?v=<%= property.youtube_video_id %><%
+              }
+            %>"
+          >
+          <p class="field-hint property-video-or">Or upload a file (replaces YouTube if you choose a new file):</p>
           <input
             type="file"
             name="propertyVideo"
@@ -375,11 +391,11 @@
           >
           <% if (property && property.video_filename) { %>
             <p class="property-video-current">
-              A video is already published. Choose a new file to replace it, or tick below to remove it.
+              A video file is already published. Choose a new file to replace it, or tick below to remove it.
             </p>
             <label class="checkbox-label-row">
               <input type="checkbox" name="remove_video" value="1">
-              Remove video from the website
+              Remove uploaded video file from the website
             </label>
           <% } %>
         </div>
@@ -473,7 +489,7 @@
       function applyCoverFromGallery(imageId, filename) {
         if (!filename || !coverFromInput) return;
         coverFromInput.value = String(imageId);
-        img.src = "/uploads/" + filename;
+        img.src = /^https?:\/\//i.test(filename) ? filename : ("/uploads/" + filename);
         img.style.display = "block";
         ph.style.display = "none";
         zone.classList.add("has-image");
@@ -490,8 +506,8 @@
         zone.classList.add("has-image");
       }
 
-      <% if (property && property.displayImage) { %>
-      img.src = "/uploads/<%= property.displayImage %>";
+      <% if (property && (property.displayImageUrl || property.displayImage)) { %>
+      img.src = "<%= property.displayImageUrl ? property.displayImageUrl : ('/uploads/' + property.displayImage) %>";
       img.style.display = "block";
       ph.style.display = "none";
       zone.classList.add("has-image");

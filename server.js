@@ -5,7 +5,7 @@ const session = require("express-session");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const Database = require("better-sqlite3");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 if (process.env.VERCEL) {
@@ -41,11 +41,40 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// database
-const db = new Database(path.join(__dirname, "properties.db"));
-db.pragma("foreign_keys = ON");
+// Supabase (optional; used when env vars are set)
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_SECRET_KEY =
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "property-images";
+const useSupabase = Boolean(SUPABASE_URL && SUPABASE_SECRET_KEY);
+const supabase = useSupabase
+  ? createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    })
+  : null;
 
-// tables
+// SQLite (only used when Supabase is not enabled)
+let db = null;
+if (!useSupabase) {
+  // Lazy require so Supabase/Vercel deployments don't load native sqlite binaries.
+  // Native module cold starts can cause FUNCTION_INVOCATION_TIMEOUT.
+  // eslint-disable-next-line global-require
+  const Database = require("better-sqlite3");
+  db = new Database(path.join(__dirname, "properties.db"));
+  db.pragma("foreign_keys = ON");
+}
+
+function supabasePublicObjectUrl(storagePath) {
+  const p = String(storagePath || "").trim().replace(/^\/+/, "");
+  if (!p) return null;
+  if (/^https?:\/\//i.test(p)) return p;
+  return `${SUPABASE_URL.replace(/\/+$/, "")}/storage/v1/object/public/${encodeURIComponent(
+    SUPABASE_BUCKET
+  )}/${p}`;
+}
+
+// tables (SQLite only)
+if (!useSupabase) {
 db.exec(`
 CREATE TABLE IF NOT EXISTS admins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,7 +161,9 @@ if (!seedEj) {
     "ej-durand"
   );
 }
+} // end sqlite-only schema/seed/migrations
 
+if (!useSupabase) {
 const adminRowCount = db.prepare("SELECT COUNT(*) AS c FROM admins").get().c;
 if (!adminRowCount) {
   db.prepare("INSERT INTO admins (username, password) VALUES (?, ?)").run(
@@ -198,6 +229,9 @@ if (!propColNames.has("use_unit_details")) {
 }
 if (!propColNames.has("video_filename")) {
   db.exec("ALTER TABLE properties ADD COLUMN video_filename TEXT");
+}
+if (!propColNames.has("youtube_video_id")) {
+  db.exec("ALTER TABLE properties ADD COLUMN youtube_video_id TEXT");
 }
 if (!propColNames.has("power_phase")) {
   db.exec("ALTER TABLE properties ADD COLUMN power_phase TEXT");
@@ -287,6 +321,7 @@ CREATE TABLE IF NOT EXISTS building_images (
   FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE CASCADE
 );
 `);
+} // end sqlite-only migrations/seed
 
 // app config
 app.set("view engine", "ejs");
@@ -371,6 +406,216 @@ function requireLogin(req, res, next) {
     return res.redirect("/admin/login");
   }
   next();
+}
+
+/** Accepts YouTube watch / embed / shorts / youtu.be URL or an 11-character id; returns id or null. */
+function parseYoutubeVideoId(input) {
+  if (input == null) return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+  if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) return raw;
+  try {
+    const base = /^https?:\/\//i.test(raw) ? undefined : "https://www.youtube.com";
+    const u = new URL(raw, base);
+    const host = (u.hostname || "").replace(/^www\./, "");
+    if (host === "youtu.be") {
+      const id = u.pathname.split("/").filter(Boolean)[0];
+      return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+    }
+    if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "music.youtube.com"
+    ) {
+      if (u.pathname.startsWith("/embed/")) {
+        const id = u.pathname.slice(7).split("/")[0]?.split("?")[0];
+        return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+      }
+      if (u.pathname.startsWith("/shorts/")) {
+        const id = u.pathname.slice(8).split("/")[0]?.split("?")[0];
+        return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+      }
+      const v = u.searchParams.get("v");
+      return v && /^[a-zA-Z0-9_-]{11}$/.test(v) ? v : null;
+    }
+  } catch (_) {
+    /* ignore malformed URL */
+  }
+  return null;
+}
+
+async function sbListPropertyImages(propertyId) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("property_images")
+    .select("id, property_id, filename, image_order")
+    .eq("property_id", propertyId)
+    .order("image_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+function enrichPropertyForRender(property, images) {
+  // Matches existing shape expected by templates, but supports Supabase URLs too.
+  const imgRows = (images || []).map((img) => ({
+    ...img,
+    url: supabasePublicObjectUrl(img.filename) || img.filename
+  }));
+  property.images = imgRows;
+  const unitFiles = [];
+  if (property.display_image) unitFiles.push(property.display_image);
+  imgRows.forEach((img) => unitFiles.push(img.filename));
+  const galleryFilenames = dedupeFilenames(unitFiles);
+  property.galleryFilenames = galleryFilenames;
+  property.galleryUrls = galleryFilenames.map((f) => supabasePublicObjectUrl(f) || f);
+  property.displayImage =
+    property.display_image || (imgRows && imgRows[0] ? imgRows[0].filename : null);
+  property.displayImageUrl = supabasePublicObjectUrl(property.displayImage) || property.displayImage;
+  property.cardImage = property.displayImage;
+  property.cardImageUrl = supabasePublicObjectUrl(property.cardImage) || property.cardImage;
+  property.statusLabel = formatStatusLabel(property.status);
+  property.propertyTypeLabel = formatPropertyTypeLabel(property.property_type);
+  return property;
+}
+
+async function sbGetPublicProperties(filters = {}) {
+  const selectedArea = filters.area || "";
+  const selectedStatus = filters.status || "";
+  const selectedPropertyType = filters.propertyType || "";
+  const search = filters.search || "";
+  const ampsMin = parseFilterBound(filters.ampsMin);
+  const heightMin = parseFilterBound(filters.heightMin);
+
+  const parsed = parseSearchQuery(search);
+  let effectiveArea = selectedArea;
+  if (!effectiveArea && parsed.areaFromQuery) effectiveArea = parsed.areaFromQuery;
+  const textForLike = getKeywordLikeTerm(search, selectedArea, parsed);
+
+  let q = supabase
+    .from("properties")
+    .select("*")
+    .in("status", ["to-let", "for-sale"]);
+
+  if (effectiveArea) q = q.eq("area", effectiveArea);
+  if (selectedStatus) q = q.eq("status", selectedStatus);
+  if (selectedPropertyType === "office" || selectedPropertyType === "industrial") {
+    q = q.eq("property_type", selectedPropertyType);
+  }
+  if (textForLike) {
+    const like = `%${textForLike}%`;
+    // OR across multiple text columns
+    q = q.or(
+      [
+        `name.ilike.${like}`,
+        `address.ilike.${like}`,
+        `size.ilike.${like}`,
+        `price.ilike.${like}`,
+        `availability.ilike.${like}`,
+        `description.ilike.${like}`,
+        `features.ilike.${like}`
+      ].join(",")
+    );
+  }
+
+  const { data, error } = await q.order("id", { ascending: false }).limit(200);
+  if (error) throw error;
+  let rows = data || [];
+
+  if (ampsMin != null) {
+    rows = rows.filter((row) => {
+      const a = parseAmpsToNumber(row.power_amps);
+      return a != null && a >= ampsMin;
+    });
+  }
+  if (heightMin != null) {
+    rows = rows.filter((row) => {
+      const h = getListingHeightMetresForFilter(row);
+      return h != null && h >= heightMin;
+    });
+  }
+
+  // Batch fetch images for these properties
+  const ids = rows.map((r) => r.id).filter((n) => n != null);
+  const imagesByProp = new Map();
+  if (ids.length) {
+    const { data: imgs, error: imgErr } = await supabase
+      .from("property_images")
+      .select("property_id, filename, image_order, id")
+      .in("property_id", ids)
+      .order("image_order", { ascending: true })
+      .order("id", { ascending: true });
+    if (imgErr) throw imgErr;
+    (imgs || []).forEach((img) => {
+      const arr = imagesByProp.get(img.property_id) || [];
+      arr.push(img);
+      imagesByProp.set(img.property_id, arr);
+    });
+  }
+
+  rows = rows.map((p) => enrichPropertyForRender(p, imagesByProp.get(p.id) || []));
+  const high = shuffleArray(rows.filter((p) => p.priority_group === "high"));
+  const medium = shuffleArray(rows.filter((p) => p.priority_group === "medium"));
+  const low = shuffleArray(rows.filter((p) => p.priority_group === "low"));
+  const other = shuffleArray(
+    rows.filter(
+      (p) =>
+        p.priority_group !== "high" &&
+        p.priority_group !== "medium" &&
+        p.priority_group !== "low"
+    )
+  );
+  return [...high, ...medium, ...low, ...other];
+}
+
+async function sbGetAdminProperties(area = "") {
+  let q = supabase.from("properties").select("*");
+  if (area) q = q.eq("area", area);
+  const { data, error } = await q.order("id", { ascending: false }).limit(500);
+  if (error) throw error;
+  let rows = data || [];
+  const ids = rows.map((r) => r.id).filter((n) => n != null);
+  const imagesByProp = new Map();
+  if (ids.length) {
+    const { data: imgs, error: imgErr } = await supabase
+      .from("property_images")
+      .select("property_id, filename, image_order, id")
+      .in("property_id", ids)
+      .order("image_order", { ascending: true })
+      .order("id", { ascending: true });
+    if (imgErr) throw imgErr;
+    (imgs || []).forEach((img) => {
+      const arr = imagesByProp.get(img.property_id) || [];
+      arr.push(img);
+      imagesByProp.set(img.property_id, arr);
+    });
+  }
+  rows = rows.map((p) => enrichPropertyForRender(p, imagesByProp.get(p.id) || []));
+  // Match existing priority sort
+  rows.sort((a, b) => {
+    const rank = (x) =>
+      x === "high" ? 1 : x === "medium" ? 2 : x === "low" ? 3 : 4;
+    const ra = rank(a.priority_group);
+    const rb = rank(b.priority_group);
+    if (ra !== rb) return ra - rb;
+    return Number(b.id || 0) - Number(a.id || 0);
+  });
+  return rows;
+}
+
+async function sbUploadMulterFile(file, storagePath) {
+  const p = String(storagePath || "").replace(/^\/+/, "");
+  const buf = fs.readFileSync(file.path);
+  const { error } = await supabase.storage.from(SUPABASE_BUCKET).upload(p, buf, {
+    contentType: file.mimetype || "application/octet-stream",
+    upsert: true
+  });
+  // Always try to delete temp file afterward
+  try {
+    fs.unlinkSync(file.path);
+  } catch (_) {}
+  if (error) throw error;
+  return p;
 }
 
 function shuffleArray(items) {
@@ -2275,7 +2520,7 @@ function buildAreaGuideRedirectQuery(req, omitKeywords) {
   return s ? `?${s}` : "";
 }
 
-app.get("/", (req, res) => {
+app.get("/", async (req, res, next) => {
   const selectedArea = req.query.area || "";
   const keywordsEarly = String(req.query.keywords || req.query.search || "").trim();
   const guide = resolveHomeToAreaGuideSlug(keywordsEarly, selectedArea);
@@ -2302,20 +2547,33 @@ app.get("/", (req, res) => {
       req.query.status !== undefined;
   }
 
-  const properties = getPublicProperties({
-    area: selectedArea,
-    status: selectedStatus,
-    propertyType: selectedPropertyType,
-    search: keywords,
-    ampsMin: req.query.amps_min,
-    heightMin: req.query.height_min
-  });
+  let properties;
+  try {
+    properties = supabase
+      ? await sbGetPublicProperties({
+          area: selectedArea,
+          status: selectedStatus,
+          propertyType: selectedPropertyType,
+          search: keywords,
+          ampsMin: req.query.amps_min,
+          heightMin: req.query.height_min
+        })
+      : getPublicProperties({
+          area: selectedArea,
+          status: selectedStatus,
+          propertyType: selectedPropertyType,
+          search: keywords,
+          ampsMin: req.query.amps_min,
+          heightMin: req.query.height_min
+        });
+  } catch (e) {
+    return next(e);
+  }
 
-  const featuredHome = getHomeFeaturedSlides();
-  const quizPropertiesJson = JSON.stringify(getQuizMatchSourceList()).replace(
-    /</g,
-    "\\u003c"
-  );
+  const featuredHome = supabase ? [] : getHomeFeaturedSlides();
+  const quizPropertiesJson = supabase
+    ? "[]"
+    : JSON.stringify(getQuizMatchSourceList()).replace(/</g, "\\u003c");
 
   res.render("index", {
     properties,
@@ -2332,7 +2590,7 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/area/:slug", (req, res) => {
+app.get("/area/:slug", async (req, res, next) => {
   const slug = String(req.params.slug || "")
     .trim()
     .toLowerCase();
@@ -2348,14 +2606,28 @@ app.get("/area/:slug", (req, res) => {
   const selectedPropertyType = String(req.query.property_type || "").trim();
   const keywords = String(req.query.keywords || req.query.search || "").trim();
 
-  const properties = getPublicProperties({
-    area: areaName,
-    status: selectedStatus,
-    propertyType: selectedPropertyType,
-    search: keywords,
-    ampsMin: req.query.amps_min,
-    heightMin: req.query.height_min
-  });
+  let properties;
+  try {
+    properties = supabase
+      ? await sbGetPublicProperties({
+          area: areaName,
+          status: selectedStatus,
+          propertyType: selectedPropertyType,
+          search: keywords,
+          ampsMin: req.query.amps_min,
+          heightMin: req.query.height_min
+        })
+      : getPublicProperties({
+          area: areaName,
+          status: selectedStatus,
+          propertyType: selectedPropertyType,
+          search: keywords,
+          ampsMin: req.query.amps_min,
+          heightMin: req.query.height_min
+        });
+  } catch (e) {
+    return next(e);
+  }
 
   const insights = getAreaInsights(areaName);
   const mapCenter = CAPE_AREA_CENTROIDS[areaName] || {
@@ -2380,18 +2652,36 @@ app.get("/area/:slug", (req, res) => {
   });
 });
 
-app.get("/property/:id", (req, res) => {
-  const property = db
-    .prepare("SELECT * FROM properties WHERE id = ?")
-    .get(req.params.id);
+app.get("/property/:id", async (req, res, next) => {
+  let property = null;
+  try {
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("id", Number(req.params.id))
+        .maybeSingle();
+      if (error) throw error;
+      property = data || null;
+      if (property) {
+        const imgs = await sbListPropertyImages(property.id);
+        enrichPropertyForRender(property, imgs);
+      }
+    } else {
+      property = db.prepare("SELECT * FROM properties WHERE id = ?").get(req.params.id);
+      if (property) enrichProperty(property);
+    }
+  } catch (e) {
+    return next(e);
+  }
 
   if (!property) {
     return res.status(404).send("Property not found");
   }
 
-  enrichProperty(property);
-
-  const similarProperties = getSimilarProperties(property.id, property.size, 6);
+  const similarProperties = supabase
+    ? []
+    : getSimilarProperties(property.id, property.size, 6);
   const googleMapsKey = process.env.GOOGLE_MAPS_API_KEY || "";
   const lat =
     property.latitude != null && property.latitude !== ""
@@ -2699,16 +2989,21 @@ function getDailyMotivationalQuote() {
 }
 
 // ADMIN DASHBOARD
-app.get("/admin", requireLogin, (req, res) => {
+app.get("/admin", requireLogin, async (req, res, next) => {
   const adminArea = req.query.adminArea || "";
-  const properties = getAdminProperties(adminArea);
   const success = req.query.success || null;
-
-  res.render("admin", {
-    properties,
-    adminArea,
-    success
-  });
+  try {
+    const properties = supabase
+      ? await sbGetAdminProperties(adminArea)
+      : getAdminProperties(adminArea);
+    res.render("admin", {
+      properties,
+      adminArea,
+      success
+    });
+  } catch (e) {
+    next(e);
+  }
 });
 
 app.get("/admin/capture-lead", requireLogin, (req, res) => {
@@ -3513,7 +3808,13 @@ app.post(
       } = req.body;
 
       const displayImage = req.files?.displayImage?.[0]?.filename || null;
-      const videoFilename = req.files?.propertyVideo?.[0]?.filename || null;
+      let videoFilename = req.files?.propertyVideo?.[0]?.filename || null;
+      let youtubeVideoId = parseYoutubeVideoId(req.body.youtube_url);
+      if (videoFilename) {
+        youtubeVideoId = null;
+      } else if (youtubeVideoId) {
+        videoFilename = null;
+      }
 
       const bid =
         building_id === "" || building_id == null ? null : Number(building_id);
@@ -3544,6 +3845,83 @@ app.post(
       const yardSpace =
         yard_space && String(yard_space).trim() ? String(yard_space).trim() : "";
 
+      if (supabase) {
+        // Insert first to get an id, then upload files to Storage and write image rows.
+        const { data: created, error: createErr } = await supabase
+          .from("properties")
+          .insert([
+            {
+              name,
+              area,
+              status,
+              priority_group: priority_group || "medium",
+              size: sizeFormatted,
+              address: address || "",
+              price: priceFormatted,
+              availability: availabilityVal,
+              description: description || "",
+              features: "",
+              notes: notes || "",
+              display_image: null,
+              building_id: Number.isFinite(bid) ? bid : null,
+              use_unit_details: useUnit,
+              broker_id: brokerId,
+              video_filename: videoFilename,
+              youtube_video_id: youtubeVideoId,
+              power_phase: pp,
+              power_amps: amps,
+              height_eave_apex: hApex,
+              height_eave_roller_shutter: hRs,
+              parking_bays: park,
+              yard_space: yardSpace,
+              property_type: propType
+            }
+          ])
+          .select("*")
+          .single();
+        if (createErr) throw createErr;
+
+        const propertyId = created.id;
+        const safePrefix = `properties/${propertyId}`;
+
+        // Cover image
+        let displayImagePath = null;
+        const coverFile = req.files?.displayImage?.[0] || null;
+        if (coverFile) {
+          const coverPath = `${safePrefix}/cover-${Date.now()}-${String(
+            coverFile.originalname || "cover"
+          ).replace(/\s+/g, "-")}`;
+          displayImagePath = await sbUploadMulterFile(coverFile, coverPath);
+        }
+
+        // Gallery images
+        const galleryFiles = req.files?.images || [];
+        for (let i = 0; i < galleryFiles.length; i += 1) {
+          const f = galleryFiles[i];
+          const p = `${safePrefix}/img-${Date.now()}-${i + 1}-${String(
+            f.originalname || "image"
+          ).replace(/\s+/g, "-")}`;
+          const uploadedPath = await sbUploadMulterFile(f, p);
+          const { error: imgErr } = await supabase.from("property_images").insert([
+            { property_id: propertyId, filename: uploadedPath, image_order: i + 1 }
+          ]);
+          if (imgErr) throw imgErr;
+        }
+
+        // Update property with display_image path (after upload)
+        if (displayImagePath) {
+          const { error: upErr } = await supabase
+            .from("properties")
+            .update({ display_image: displayImagePath })
+            .eq("id", propertyId);
+          if (upErr) throw upErr;
+        }
+
+        res.redirect("/admin?success=created");
+        schedulePropertyGeocode(propertyId, address, area);
+        return;
+      }
+
       const result = db.prepare(`
       INSERT INTO properties (
         name,
@@ -3562,6 +3940,7 @@ app.post(
         use_unit_details,
         broker_id,
         video_filename,
+        youtube_video_id,
         power_phase,
         power_amps,
         height_eave_apex,
@@ -3569,7 +3948,7 @@ app.post(
         parking_bays,
         yard_space,
         property_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         name,
         area,
@@ -3587,6 +3966,7 @@ app.post(
         useUnit,
         brokerId,
         videoFilename,
+        youtubeVideoId,
         pp,
         amps,
         hApex,
@@ -3619,9 +3999,12 @@ app.post(
 
 // EDIT PROPERTY PAGE
 app.get("/admin/properties/:id/edit", requireLogin, (req, res) => {
-  const property = db
-    .prepare("SELECT * FROM properties WHERE id = ?")
-    .get(req.params.id);
+  if (supabase) {
+    return res
+      .status(302)
+      .redirect(`/admin/properties/${encodeURIComponent(req.params.id)}/edit-sb`);
+  }
+  const property = db.prepare("SELECT * FROM properties WHERE id = ?").get(req.params.id);
 
   if (!property) {
     return res.redirect("/admin");
@@ -3642,6 +4025,36 @@ app.get("/admin/properties/:id/edit", requireLogin, (req, res) => {
   });
 });
 
+// EDIT PROPERTY PAGE (Supabase)
+app.get("/admin/properties/:id/edit-sb", requireLogin, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { data: property, error } = await supabase
+      .from("properties")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!property) return res.redirect("/admin");
+    const imgs = await sbListPropertyImages(id);
+    enrichPropertyForRender(property, imgs);
+    property.statusSelect = normalizeStatusForForm(property.status);
+    property.sizeInput = parseSizeForForm(property.size);
+    property.priceInput = parsePriceForForm(property.price);
+    property.availabilityDate = availabilityDateValue(property.availability);
+
+    res.render("property-form", {
+      pageTitle: "Edit Property",
+      formAction: `/admin/properties/${property.id}/edit`,
+      property,
+      buildings: getBuildingsList(),
+      listingBrokers: getListingBrokers()
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // EDIT PROPERTY SUBMIT
 app.post(
   "/admin/properties/:id/edit",
@@ -3654,6 +4067,163 @@ app.post(
   async (req, res, next) => {
     try {
       const id = req.params.id;
+
+      if (supabase) {
+        const pid = Number(id);
+        const { data: existing, error: exErr } = await supabase
+          .from("properties")
+          .select("*")
+          .eq("id", pid)
+          .maybeSingle();
+        if (exErr) throw exErr;
+        if (!existing) return res.redirect("/admin");
+
+        const {
+          name,
+          area,
+          status,
+          priority_group,
+          size,
+          address,
+          price,
+          availability,
+          description,
+          notes,
+          building_id,
+          use_unit_details,
+          broker_id,
+          remove_video,
+          power_phase,
+          power_amps,
+          height_eave_apex,
+          height_eave_roller_shutter,
+          parking_bays,
+          yard_space,
+          property_type
+        } = req.body;
+
+        const bid =
+          building_id === "" || building_id == null ? null : Number(building_id);
+        const useUnit = use_unit_details === "1" ? 1 : 0;
+        const brokerId = parseBrokerId(broker_id);
+        const propType = normalizePropertyType(property_type);
+
+        const sizeFormatted = formatSizeForSave(size);
+        const priceFormatted = formatPriceForSave(price);
+        const availabilityVal =
+          availability && String(availability).trim() ? String(availability).trim() : "";
+
+        const pp =
+          power_phase === "3-phase" || power_phase === "single-phase"
+            ? power_phase
+            : "";
+        const amps = power_amps && String(power_amps).trim() ? String(power_amps).trim() : "";
+        const hApex =
+          height_eave_apex && String(height_eave_apex).trim()
+            ? String(height_eave_apex).trim()
+            : "";
+        const hRs =
+          height_eave_roller_shutter && String(height_eave_roller_shutter).trim()
+            ? String(height_eave_roller_shutter).trim()
+            : "";
+        const park =
+          parking_bays && String(parking_bays).trim() ? String(parking_bays).trim() : "";
+        const yardSpace =
+          yard_space && String(yard_space).trim() ? String(yard_space).trim() : "";
+
+        // Video: prefer YouTube; ignore uploaded file in Supabase mode
+        let videoFilename = existing.video_filename || null;
+        let youtubeVideoId =
+          existing.youtube_video_id && String(existing.youtube_video_id).trim()
+            ? String(existing.youtube_video_id).trim()
+            : null;
+        if (remove_video === "1") videoFilename = null;
+        if (Object.prototype.hasOwnProperty.call(req.body, "youtube_url")) {
+          const ytTrim = req.body.youtube_url != null ? String(req.body.youtube_url).trim() : "";
+          youtubeVideoId = ytTrim ? parseYoutubeVideoId(ytTrim) : null;
+          if (youtubeVideoId) videoFilename = null;
+        }
+        // If a user tried to upload a file, delete temp file (but don't store it)
+        const uploadedVid = req.files?.propertyVideo?.[0];
+        if (uploadedVid && uploadedVid.path) {
+          try {
+            fs.unlinkSync(uploadedVid.path);
+          } catch (_) {}
+        }
+
+        const safePrefix = `properties/${pid}`;
+
+        // Cover
+        let displayImagePath = existing.display_image || null;
+        const coverFile = req.files?.displayImage?.[0] || null;
+        if (coverFile) {
+          const coverPath = `${safePrefix}/cover-${Date.now()}-${String(
+            coverFile.originalname || "cover"
+          ).replace(/\s+/g, "-")}`;
+          displayImagePath = await sbUploadMulterFile(coverFile, coverPath);
+        }
+
+        const { error: upErr } = await supabase
+          .from("properties")
+          .update({
+            name,
+            area,
+            status,
+            priority_group: priority_group || "medium",
+            size: sizeFormatted,
+            address: address || "",
+            price: priceFormatted,
+            availability: availabilityVal,
+            description: description || "",
+            notes: notes || "",
+            display_image: displayImagePath,
+            building_id: Number.isFinite(bid) ? bid : null,
+            use_unit_details: useUnit,
+            broker_id: brokerId,
+            video_filename: videoFilename,
+            youtube_video_id: youtubeVideoId,
+            power_phase: pp,
+            power_amps: amps,
+            height_eave_apex: hApex,
+            height_eave_roller_shutter: hRs,
+            parking_bays: park,
+            yard_space: yardSpace,
+            property_type: propType
+          })
+          .eq("id", pid);
+        if (upErr) throw upErr;
+
+        // Append gallery images
+        const galleryFiles = req.files?.images || [];
+        if (galleryFiles.length) {
+          const { data: maxRow, error: maxErr } = await supabase
+            .from("property_images")
+            .select("image_order")
+            .eq("property_id", pid)
+            .order("image_order", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (maxErr) throw maxErr;
+          const currentMax = maxRow && maxRow.image_order ? Number(maxRow.image_order) : 0;
+          for (let i = 0; i < galleryFiles.length; i += 1) {
+            const f = galleryFiles[i];
+            const p = `${safePrefix}/img-${Date.now()}-${currentMax + i + 1}-${String(
+              f.originalname || "image"
+            ).replace(/\s+/g, "-")}`;
+            const uploadedPath = await sbUploadMulterFile(f, p);
+            const { error: imgErr } = await supabase.from("property_images").insert([
+              { property_id: pid, filename: uploadedPath, image_order: currentMax + i + 1 }
+            ]);
+            if (imgErr) throw imgErr;
+          }
+        }
+
+        res.redirect("/admin?success=updated");
+        if (address && String(address).trim()) {
+          schedulePropertyGeocode(pid, address, area);
+        }
+        return;
+      }
 
       const existing = db
         .prepare("SELECT * FROM properties WHERE id = ?")
@@ -3700,6 +4270,11 @@ app.post(
       }
 
       let videoFilename = existing.video_filename || null;
+      let youtubeVideoId =
+        existing.youtube_video_id && String(existing.youtube_video_id).trim()
+          ? String(existing.youtube_video_id).trim()
+          : null;
+
       if (remove_video === "1") {
         safeUnlinkUpload(videoFilename);
         videoFilename = null;
@@ -3707,6 +4282,19 @@ app.post(
       if (req.files?.propertyVideo?.[0]?.filename) {
         safeUnlinkUpload(existing.video_filename);
         videoFilename = req.files.propertyVideo[0].filename;
+        youtubeVideoId = null;
+      } else if (Object.prototype.hasOwnProperty.call(req.body, "youtube_url")) {
+        const ytTrim = req.body.youtube_url != null ? String(req.body.youtube_url).trim() : "";
+        if (!ytTrim) {
+          youtubeVideoId = null;
+        } else {
+          const parsed = parseYoutubeVideoId(ytTrim);
+          youtubeVideoId = parsed;
+          if (youtubeVideoId) {
+            safeUnlinkUpload(videoFilename);
+            videoFilename = null;
+          }
+        }
       }
 
       const bid =
@@ -3757,6 +4345,7 @@ app.post(
         use_unit_details = ?,
         broker_id = ?,
         video_filename = ?,
+        youtube_video_id = ?,
         power_phase = ?,
         power_amps = ?,
         height_eave_apex = ?,
@@ -3782,6 +4371,7 @@ app.post(
         useUnit,
         brokerId,
         videoFilename,
+        youtubeVideoId,
         pp,
         amps,
         hApex,

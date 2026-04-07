@@ -99,7 +99,7 @@
                       <% if (slide.galleryImages && slide.galleryImages.length) { %>
                         <img src="<%= slide.galleryImages[0] %>" alt="" class="home-featured-api__img">
                       <% } else if (slide.cardImage) { %>
-                        <img src="/uploads/<%= slide.cardImage %>" alt="" class="home-featured-api__img">
+                      <img src="<%= slide.cardImageUrl ? slide.cardImageUrl : ('/uploads/' + slide.cardImage) %>" alt="" class="home-featured-api__img">
                       <% } else { %>
                         <div class="home-featured-api__placeholder">No image</div>
                       <% } %>
@@ -121,7 +121,7 @@
                       <img src="<%= slide.galleryImages[1] %>" alt="" class="home-featured-card__img home-featured-card__img--b" aria-hidden="true">
                     <% } %>
                   <% } else if (slide.cardImage) { %>
-                    <img src="/uploads/<%= slide.cardImage %>" alt="" class="home-featured-card__img">
+                    <img src="<%= slide.cardImageUrl ? slide.cardImageUrl : ('/uploads/' + slide.cardImage) %>" alt="" class="home-featured-card__img">
                   <% } else { %>
                     <div class="home-featured-card__placeholder">No image</div>
                   <% } %>
@@ -193,16 +193,16 @@
           <% properties.forEach(property => { %>
             <article class="property-card <%= property.images && property.images.length > 1 ? 'property-card--gallery' : '' %>"
               <% if (property.images && property.images.length > 1) { %>
-                data-gallery='<%- JSON.stringify(property.images.map(i => "/uploads/" + i.filename)) %>'
+                data-gallery='<%- JSON.stringify((property.images || []).map(i => i.url ? i.url : ("/uploads/" + i.filename))) %>'
               <% } %>
             >
               <div class="card-main-image-wrap">
-                <% if (property.video_filename) { %>
+                <% if (property.video_filename || property.youtube_video_id) { %>
                   <span class="property-card-video-badge">Video</span>
                 <% } %>
                 <% if (property.cardImage) { %>
                   <a href="/property/<%= property.id %>" class="card-main-image-link" aria-label="View <%= property.name %> listing">
-                    <img id="main-card-image-<%= property.id %>" src="/uploads/<%= property.cardImage %>" alt="<%= property.name %>" class="card-main-image">
+                    <img id="main-card-image-<%= property.id %>" src="<%= property.cardImageUrl ? property.cardImageUrl : ('/uploads/' + property.cardImage) %>" alt="<%= property.name %>" class="card-main-image">
                   </a>
                 <% } else { %>
                   <a href="/property/<%= property.id %>" class="card-main-image-link card-main-image-link--empty" aria-label="View <%= property.name %>">
@@ -213,7 +213,7 @@
               <% if (property.images && property.images.length > 0) { %>
                 <div class="thumb-scroll-row">
                   <% property.images.slice(0, 10).forEach((image, tidx) => { %>
-                    <img src="/uploads/<%= image.filename %>" alt="" class="homepage-thumb" onclick="var m=document.getElementById('main-card-image-<%= property.id %>');if(m)m.src='/uploads/<%= image.filename %>';">
+                    <img src="<%= image.url ? image.url : ('/uploads/' + image.filename) %>" alt="" class="homepage-thumb" onclick="var m=document.getElementById('main-card-image-<%= property.id %>');if(m)m.src='<%= image.url ? image.url : ('/uploads/' + image.filename) %>';">
                   <% }) %>
                 </div>
               <% } %>

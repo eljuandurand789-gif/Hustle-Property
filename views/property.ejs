@@ -39,9 +39,19 @@
     <% } %>
 
     <%
-      const allImages = property.galleryFilenames && property.galleryFilenames.length ? property.galleryFilenames : [];
+      const allImages =
+        property.galleryUrls && property.galleryUrls.length
+          ? property.galleryUrls
+          : property.galleryFilenames && property.galleryFilenames.length
+            ? property.galleryFilenames.map((f) => (String(f).startsWith("http") ? f : "/uploads/" + f))
+            : [];
       const hasGalleryPhotos = allImages.length > 0;
-      const hasListingVideo = !!(property.video_filename && String(property.video_filename).trim());
+      const ytId =
+        property.youtube_video_id && String(property.youtube_video_id).trim()
+          ? String(property.youtube_video_id).trim()
+          : "";
+      const hasUploadedVideo = !!(property.video_filename && String(property.video_filename).trim());
+      const hasListingVideo = hasUploadedVideo || !!ytId;
       const hasHeroColumn = hasGalleryPhotos || hasListingVideo;
     %>
     <div class="property-detail-layout<%= hasHeroColumn ? " property-detail-layout--hero" : " property-detail-layout--stack" %>">
@@ -54,7 +64,7 @@
 
             <img
               id="mainSliderImage"
-              src="/uploads/<%= allImages[0] %>"
+              src="<%= allImages[0] %>"
               alt="<%= property.name %>"
               class="main-property-image"
             >
@@ -65,7 +75,7 @@
           <div class="thumb-row">
             <% allImages.forEach((img, index) => { %>
               <img
-                src="/uploads/<%= img %>"
+                src="<%= img %>"
                 alt="<%= property.name %>"
                 class="detail-thumb"
                 onclick="setSlide(<%= index %>)"
@@ -85,7 +95,7 @@
           </div>
 
           <script>
-            const sliderImages = <%- JSON.stringify(allImages.map(img => "/uploads/" + img)) %>;
+            const sliderImages = <%- JSON.stringify(allImages) %>;
             let currentSlide = 0;
 
             function setSlide(index) {
@@ -168,15 +178,29 @@
         <% if (hasListingVideo) { %>
           <div class="property-video-block">
             <h3 class="property-video-heading">Property video</h3>
-            <video
-              class="property-video"
-              controls
-              playsinline
-              preload="metadata"
-              src="/uploads/<%= property.video_filename %>"
-            >
-              Your browser does not support embedded video.
-            </video>
+            <% if (ytId) { %>
+              <div class="property-video-youtube-wrap">
+                <iframe
+                  class="property-video-youtube"
+                  src="https://www.youtube-nocookie.com/embed/<%= ytId %>?rel=0"
+                  title="Property video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowfullscreen
+                  loading="lazy"
+                  referrerpolicy="strict-origin-when-cross-origin"
+                ></iframe>
+              </div>
+            <% } else { %>
+              <video
+                class="property-video"
+                controls
+                playsinline
+                preload="metadata"
+                src="/uploads/<%= property.video_filename %>"
+              >
+                Your browser does not support embedded video.
+              </video>
+            <% } %>
           </div>
         <% } %>
       </div>
