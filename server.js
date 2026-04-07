@@ -2846,6 +2846,18 @@ app.post("/property/:id/enquiry", (req, res) => {
 
 app.get("/done-deals", (req, res) => {
   try {
+    if (useSupabase) {
+      return res.render("done-deals", {
+        pageTitle: "Track record",
+        doneDealsCount: 0,
+        totalLeaseVolumeZar: 0,
+        showcaseDeals: [],
+        areasList: [],
+        totalLeaseMonthsSigned: 0,
+        leasePeriodDisplay: "—",
+        highestMonthlyRent: { amount: 0, area: "" }
+      });
+    }
     const stats = getDoneDealsPublicStats();
     res.render("done-deals", {
       pageTitle: "Track record",
