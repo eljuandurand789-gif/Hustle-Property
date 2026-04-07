@@ -319,11 +319,12 @@
                       class="image-order-card"
                       data-image-id="<%= image.id %>"
                       data-filename="<%= image.filename %>"
+                      data-image-src="<%= image.url || '' %>"
                       draggable="true"
                     >
 
                       <img
-                        src="<%= image.url ? image.url : ('/uploads/' + image.filename) %>"
+                        src="<%= image.url ? image.url : (image.filename ? ('/uploads/' + image.filename) : '') %>"
                         alt="Property Image"
                         class="image-order-preview"
                         draggable="false"
@@ -475,6 +476,7 @@
       var skipReorderOnDragEnd = false;
       var DT_ID = "application/x-property-image-id";
       var DT_FILE = "application/x-property-filename";
+      var DT_SRC = "application/x-property-image-src";
 
       function hasGalleryPayload(types) {
         if (!types || !types.length) return false;
@@ -486,10 +488,16 @@
         if (coverFromInput) coverFromInput.value = "";
       }
 
-      function applyCoverFromGallery(imageId, filename) {
+      function applyCoverFromGallery(imageId, filename, imageSrc) {
         if (!filename || !coverFromInput) return;
         coverFromInput.value = String(imageId);
-        img.src = /^https?:\/\//i.test(filename) ? filename : ("/uploads/" + filename);
+        var src =
+          (imageSrc && /^https?:\/\//i.test(String(imageSrc)))
+            ? String(imageSrc)
+            : /^https?:\/\//i.test(filename)
+              ? filename
+              : ("/uploads/" + filename);
+        img.src = src;
         img.style.display = "block";
         ph.style.display = "none";
         zone.classList.add("has-image");
@@ -565,6 +573,7 @@
 
         var imageId = e.dataTransfer.getData(DT_ID);
         var filename = e.dataTransfer.getData(DT_FILE);
+        var imageSrc = e.dataTransfer.getData(DT_SRC) || "";
         if (!imageId || !filename) {
           var plain = e.dataTransfer.getData("text/plain") || "";
           var m = plain.match(/^property-image:(\d+):(.+)$/);
@@ -577,7 +586,7 @@
             }
           }
         }
-        if (imageId && filename) applyCoverFromGallery(imageId, filename);
+        if (imageId && filename) applyCoverFromGallery(imageId, filename, imageSrc);
       });
 
       var list = document.getElementById("image-sortable-list");
@@ -610,6 +619,7 @@
           card.classList.add("image-order-card--dragging");
           var id = card.getAttribute("data-image-id");
           var filename = card.getAttribute("data-filename") || "";
+          var disp = card.getAttribute("data-image-src") || "";
           e.dataTransfer.effectAllowed = "move";
           e.dataTransfer.setData(
             "text/plain",
@@ -617,6 +627,7 @@
           );
           e.dataTransfer.setData(DT_ID, String(id));
           e.dataTransfer.setData(DT_FILE, filename);
+          e.dataTransfer.setData(DT_SRC, disp);
         });
         card.addEventListener("dragend", function () {
           card.classList.remove("image-order-card--dragging");
@@ -647,7 +658,8 @@
             ev.stopPropagation();
             var id = card.getAttribute("data-image-id");
             var filename = card.getAttribute("data-filename");
-            applyCoverFromGallery(id, filename);
+            var disp = card.getAttribute("data-image-src") || "";
+            applyCoverFromGallery(id, filename, disp);
           });
         }
       });

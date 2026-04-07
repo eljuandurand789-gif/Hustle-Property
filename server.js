@@ -85,6 +85,11 @@ function supabasePublicObjectUrl(storagePath) {
   const p = String(storagePath || "").trim().replace(/^\/+/, "");
   if (!p) return null;
   if (/^https?:\/\//i.test(p)) return p;
+  if (supabase) {
+    const { data } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(p);
+    if (data && data.publicUrl) return data.publicUrl;
+  }
+  if (!SUPABASE_URL) return null;
   return `${SUPABASE_URL.replace(/\/+$/, "")}/storage/v1/object/public/${encodeURIComponent(
     SUPABASE_BUCKET
   )}/${p}`;
@@ -633,10 +638,16 @@ async function sbListPropertyImages(propertyId) {
 
 function enrichPropertyForRender(property, images) {
   // Matches existing shape expected by templates, but supports Supabase URLs too.
-  const imgRows = (images || []).map((img) => ({
-    ...img,
-    url: supabasePublicObjectUrl(img.filename) || img.filename
-  }));
+  const imgRows = (images || []).map((img) => {
+    const fn = img.filename || img.storage_path || null;
+    const url =
+      supabasePublicObjectUrl(fn) || (fn && !useSupabase ? `/uploads/${String(fn).replace(/^\/+/, "")}` : null);
+    return {
+      ...img,
+      filename: fn,
+      url
+    };
+  });
   property.images = imgRows;
   const unitFiles = [];
   if (property.display_image) unitFiles.push(property.display_image);
@@ -4901,6 +4912,16 @@ app.post(
           property_type
         } = req.body;
 
+        const nameTrim = name != null ? String(name).trim() : "";
+        const areaTrim = area != null ? String(area).trim() : "";
+        const statusTrim = status != null ? String(status).trim() : "";
+        if (!nameTrim || !areaTrim || !statusTrim) {
+          return res
+            .status(400)
+            .type("text")
+            .send("Missing required fields: name, area, and status are required.");
+        }
+
         const bid =
           building_id === "" || building_id == null ? null : Number(building_id);
         const useUnit = use_unit_details === "1" ? 1 : 0;
@@ -4952,7 +4973,7 @@ app.post(
 
         const safePrefix = `properties/${pid}`;
 
-        // Cover
+        // Cover: new upload wins; else "use gallery image as cover" from hidden input.
         let displayImagePath = existing.display_image || null;
         const coverFile = req.files?.displayImage?.[0] || null;
         if (coverFile) {
@@ -4960,12 +4981,26 @@ app.post(
             coverFile.originalname || "cover"
           ).replace(/\s+/g, "-")}`;
           displayImagePath = await sbUploadMulterFile(coverFile, coverPath);
+        } else if (req.body.coverFromImageId) {
+          const covId = Number(req.body.coverFromImageId);
+          if (Number.isFinite(covId)) {
+            const { data: crow, error: cErr } = await supabase
+              .from("property_images")
+              .select("id, property_id, storage_path, filename")
+              .eq("id", covId)
+              .eq("property_id", pid)
+              .maybeSingle();
+            if (cErr) throw cErr;
+            if (crow) {
+              displayImagePath = crow.storage_path || crow.filename || displayImagePath;
+            }
+          }
         }
 
         await sbUpdateWithDropUnknownColumns("properties", "id", pid, {
-          name,
-          area,
-          status,
+          name: nameTrim,
+          area: areaTrim,
+          status: statusTrim,
           priority_group: priority_group || "medium",
           size: sizeFormatted,
           address: address || "",
@@ -5217,10 +5252,19 @@ app.post(
   }
 );
 
-app.post("/admin/properties/:id/delete", requireLogin, (req, res) => {
+app.post("/admin/properties/:id/delete", requireLogin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     return res.redirect("/admin");
+  }
+  if (supabase) {
+    try {
+      const { error } = await supabase.from("properties").delete().eq("id", id);
+      if (error) throw error;
+    } catch (e) {
+      console.error("supabase delete property:", e);
+    }
+    return res.redirect("/admin?success=deleted");
   }
   const row = db.prepare("SELECT * FROM properties WHERE id = ?").get(id);
   if (!row) {
@@ -5239,6 +5283,51 @@ app.post("/admin/properties/:id/delete", requireLogin, (req, res) => {
 
 // IMAGE ORDERING
 app.post("/admin/images/:imageId/left", requireLogin, (req, res) => {
+  if (supabase) {
+    (async () => {
+      const imageId = Number(req.params.imageId);
+      if (!Number.isFinite(imageId)) return res.redirect("/admin");
+      const { data: image, error: imErr } = await supabase
+        .from("property_images")
+        .select("id, property_id, image_order")
+        .eq("id", imageId)
+        .maybeSingle();
+      if (imErr) throw imErr;
+      if (!image) return res.redirect("/admin");
+      const { data: leftImage } = await supabase
+        .from("property_images")
+        .select("id, image_order")
+        .eq("property_id", image.property_id)
+        .lt("image_order", image.image_order)
+        .order("image_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (leftImage) {
+        const a = Number(image.image_order);
+        const b = Number(leftImage.image_order);
+        const { error: e1 } = await supabase
+          .from("property_images")
+          .update({ image_order: -999999 })
+          .eq("id", image.id);
+        if (e1) throw e1;
+        const { error: e2 } = await supabase
+          .from("property_images")
+          .update({ image_order: a })
+          .eq("id", leftImage.id);
+        if (e2) throw e2;
+        const { error: e3 } = await supabase
+          .from("property_images")
+          .update({ image_order: b })
+          .eq("id", image.id);
+        if (e3) throw e3;
+      }
+      res.redirect(`/admin/properties/${image.property_id}/edit`);
+    })().catch((e) => {
+      console.error("image left (sb):", e);
+      if (!res.headersSent) res.status(500).type("text").send("Could not reorder image.");
+    });
+    return;
+  }
   const image = db
     .prepare("SELECT * FROM property_images WHERE id = ?")
     .get(req.params.imageId);
@@ -5268,6 +5357,51 @@ app.post("/admin/images/:imageId/left", requireLogin, (req, res) => {
 });
 
 app.post("/admin/images/:imageId/right", requireLogin, (req, res) => {
+  if (supabase) {
+    (async () => {
+      const imageId = Number(req.params.imageId);
+      if (!Number.isFinite(imageId)) return res.redirect("/admin");
+      const { data: image, error: imErr } = await supabase
+        .from("property_images")
+        .select("id, property_id, image_order")
+        .eq("id", imageId)
+        .maybeSingle();
+      if (imErr) throw imErr;
+      if (!image) return res.redirect("/admin");
+      const { data: rightImage } = await supabase
+        .from("property_images")
+        .select("id, image_order")
+        .eq("property_id", image.property_id)
+        .gt("image_order", image.image_order)
+        .order("image_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (rightImage) {
+        const a = Number(image.image_order);
+        const b = Number(rightImage.image_order);
+        const { error: e1 } = await supabase
+          .from("property_images")
+          .update({ image_order: -999999 })
+          .eq("id", image.id);
+        if (e1) throw e1;
+        const { error: e2 } = await supabase
+          .from("property_images")
+          .update({ image_order: a })
+          .eq("id", rightImage.id);
+        if (e2) throw e2;
+        const { error: e3 } = await supabase
+          .from("property_images")
+          .update({ image_order: b })
+          .eq("id", image.id);
+        if (e3) throw e3;
+      }
+      res.redirect(`/admin/properties/${image.property_id}/edit`);
+    })().catch((e) => {
+      console.error("image right (sb):", e);
+      if (!res.headersSent) res.status(500).type("text").send("Could not reorder image.");
+    });
+    return;
+  }
   const image = db
     .prepare("SELECT * FROM property_images WHERE id = ?")
     .get(req.params.imageId);
@@ -5301,6 +5435,40 @@ app.post("/admin/api/property-images/reorder", requireLogin, (req, res) => {
   const pid = Number(propertyId);
   if (!pid || !Array.isArray(imageIds) || imageIds.length === 0) {
     return res.status(400).json({ error: "Invalid payload" });
+  }
+
+  if (supabase) {
+    (async () => {
+      const { data: rows, error: rErr } = await supabase
+        .from("property_images")
+        .select("id")
+        .eq("property_id", pid);
+      if (rErr) throw rErr;
+      const valid = new Set((rows || []).map((r) => r.id));
+      const ids = imageIds.map((x) => Number(x)).filter((id) => valid.has(id));
+      if (ids.length !== imageIds.length || ids.length !== valid.size) {
+        return res.status(400).json({ error: "Image list mismatch" });
+      }
+      for (let i = 0; i < ids.length; i += 1) {
+        const { error } = await supabase
+          .from("property_images")
+          .update({ image_order: -(i + 1) })
+          .eq("id", ids[i]);
+        if (error) throw error;
+      }
+      for (let i = 0; i < ids.length; i += 1) {
+        const { error } = await supabase
+          .from("property_images")
+          .update({ image_order: i + 1 })
+          .eq("id", ids[i]);
+        if (error) throw error;
+      }
+      res.json({ ok: true });
+    })().catch((e) => {
+      console.error("reorder images (sb):", e);
+      if (!res.headersSent) res.status(500).json({ error: "reorder_failed" });
+    });
+    return;
   }
 
   const rows = db
