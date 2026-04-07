@@ -2419,10 +2419,11 @@ function pickCarouselSpecLines(p) {
 
 function mapPropertyToFeaturedSlide(p) {
   const files = [...new Set((p.galleryFilenames || []).filter(Boolean))];
-  const urls = files.map((f) => `/uploads/${f}`);
+  const urls =
+    p.galleryUrls && p.galleryUrls.length ? p.galleryUrls : files.map((f) => `/uploads/${f}`);
   let galleryImages;
   if (p.cardImage) {
-    const cover = `/uploads/${p.cardImage}`;
+    const cover = p.cardImageUrl ? p.cardImageUrl : `/uploads/${p.cardImage}`;
     const rest = urls.filter((u) => u !== cover);
     galleryImages = [cover, ...rest].slice(0, 14);
   } else {
@@ -2436,9 +2437,134 @@ function mapPropertyToFeaturedSlide(p) {
     price: p.price || "",
     propertyTypeLabel: p.propertyTypeLabel || "Industrial",
     cardImage: p.cardImage,
+    cardImageUrl: p.cardImageUrl || null,
     galleryImages,
     features: pickCarouselSpecLines(p),
     url: `/property/${p.id}`
+  };
+}
+
+async function sbGetHomeFeaturedSlides() {
+  const { data: slots, error: slotErr } = await supabase
+    .from("home_featured_slots")
+    .select("slot, property_id, feature_style")
+    .order("slot", { ascending: true });
+  if (slotErr) throw slotErr;
+  const slotToPid = { 1: null, 2: null };
+  const slotToStyle = { 1: "orbit", 2: "orbit" };
+  (slots || []).forEach((r) => {
+    const sn = Number(r.slot);
+    if (sn !== 1 && sn !== 2) return;
+    slotToPid[sn] = r.property_id;
+    const fs = String(r.feature_style ?? "").trim().toLowerCase();
+    if (fs === "api") slotToStyle[sn] = "api";
+  });
+  const ids = [slotToPid[1], slotToPid[2]]
+    .filter(Boolean)
+    .map((x) => Number(x))
+    .filter((n) => Number.isFinite(n));
+  const propsById = new Map();
+  if (ids.length) {
+    const { data: props, error: propErr } = await supabase.from("properties").select("*").in("id", ids);
+    if (propErr) throw propErr;
+    (props || []).forEach((p) => propsById.set(Number(p.id), p));
+  }
+  const imagesByProp = new Map();
+  if (ids.length) {
+    const { data: imgs, error: imgErr } = await supabase
+      .from("property_images")
+      .select("property_id, storage_path, image_order, id")
+      .in("property_id", ids)
+      .order("image_order", { ascending: true })
+      .order("id", { ascending: true });
+    if (imgErr) throw imgErr;
+    (imgs || []).forEach((img) => {
+      const arr = imagesByProp.get(img.property_id) || [];
+      arr.push({ ...img, filename: img.storage_path });
+      imagesByProp.set(img.property_id, arr);
+    });
+  }
+
+  const out = [];
+  for (const slot of [1, 2]) {
+    const pid = slotToPid[slot];
+    if (!pid) {
+      out.push({ slot, empty: true });
+      continue;
+    }
+    const p = propsById.get(Number(pid));
+    if (!p) {
+      out.push({ slot, empty: true });
+      continue;
+    }
+    enrichPropertyForRender(p, imagesByProp.get(Number(p.id)) || []);
+    const slide = mapPropertyToFeaturedSlide(p);
+    slide.slot = slot;
+    slide.featureStyle = slotToStyle[slot];
+    out.push(slide);
+  }
+  return out;
+}
+
+async function sbGetDoneDealsPublicStats() {
+  const { data: rows, error } = await supabase
+    .from("deals")
+    .select("*")
+    .or("is_expected.is.null,is_expected.eq.0");
+  if (error) throw error;
+  const showcaseRaw = [];
+  const areaSet = new Set();
+  let totalLeaseVolumeZar = 0;
+  let totalLeaseMonthsSigned = 0;
+  let highestMonthlyRent = { amount: 0, area: "" };
+
+  for (const d of rows || []) {
+    const iso = dealReportingIsoDateForPublic(d);
+    if (!iso) continue;
+    let addr = resolveDealAddressForPublic(d);
+    if (!addr) addr = "Cape Town industrial";
+
+    const area = publicAreaFromAddress(addr);
+    areaSet.add(area);
+
+    const inv = Number(d.invoice_total);
+    if (Number.isFinite(inv) && inv > 0) totalLeaseVolumeZar += inv;
+
+    const rentalStr =
+      (d.actual_rental && String(d.actual_rental).trim()) ||
+      (d.asking_rental && String(d.asking_rental).trim()) ||
+      "";
+    const rentNum = parseMonthlyRentZar(rentalStr);
+    if (rentNum != null && rentNum > highestMonthlyRent.amount) {
+      highestMonthlyRent = { amount: rentNum, area };
+    }
+
+    const months = leaseMonthsSignedForDeal(d);
+    if (months) totalLeaseMonthsSigned += months;
+
+    const closedLabel = formatDoneDealClosedSuffix(iso);
+    showcaseRaw.push({
+      area,
+      sizeLabel: "—",
+      typeLabel: "Industrial",
+      rental: rentalStr || "On request",
+      rateLine: "",
+      closedLabel,
+      invoice: Number.isFinite(inv) && inv > 0 ? inv : null,
+      sortKey: iso
+    });
+  }
+
+  showcaseRaw.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+  const areasList = [...areaSet].sort((a, b) => a.localeCompare(b));
+  return {
+    doneDealsCount: showcaseRaw.length,
+    totalLeaseVolumeZar: Math.round(totalLeaseVolumeZar * 100) / 100,
+    showcaseDeals: showcaseRaw,
+    areasList,
+    totalLeaseMonthsSigned,
+    leasePeriodDisplay: formatAggregatedLeasePeriod(totalLeaseMonthsSigned),
+    highestMonthlyRent
   };
 }
 
@@ -2704,7 +2830,7 @@ app.get("/", async (req, res, next) => {
     return next(e);
   }
 
-  const featuredHome = supabase ? [] : getHomeFeaturedSlides();
+  const featuredHome = supabase ? await sbGetHomeFeaturedSlides() : getHomeFeaturedSlides();
   const quizPropertiesJson = supabase
     ? "[]"
     : JSON.stringify(getQuizMatchSourceList()).replace(/</g, "\\u003c");
@@ -2932,21 +3058,9 @@ app.post("/property/:id/enquiry", (req, res) => {
   res.redirect(`/property/${id}?enquiry=sent`);
 });
 
-app.get("/done-deals", (req, res) => {
+app.get("/done-deals", async (req, res) => {
   try {
-    if (useSupabase) {
-      return res.render("done-deals", {
-        pageTitle: "Track record",
-        doneDealsCount: 0,
-        totalLeaseVolumeZar: 0,
-        showcaseDeals: [],
-        areasList: [],
-        totalLeaseMonthsSigned: 0,
-        leasePeriodDisplay: "—",
-        highestMonthlyRent: { amount: 0, area: "" }
-      });
-    }
-    const stats = getDoneDealsPublicStats();
+    const stats = useSupabase ? await sbGetDoneDealsPublicStats() : getDoneDealsPublicStats();
     res.render("done-deals", {
       pageTitle: "Track record",
       doneDealsCount: stats.doneDealsCount,

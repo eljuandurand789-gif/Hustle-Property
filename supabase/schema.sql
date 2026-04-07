@@ -59,6 +59,13 @@ $$;
 create index if not exists property_images_property_id_order_idx
   on public.property_images(property_id, image_order, id);
 
+create table if not exists public.home_featured_slots (
+  slot integer primary key,
+  property_id bigint references public.properties(id) on delete set null,
+  feature_style text default 'orbit',
+  constraint home_featured_slots_slot_check check (slot in (1,2))
+);
+
 create table if not exists public.agents (
   id bigserial primary key,
   name text not null,
